@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, Clock3, Coffee, Cookie, Heart, Instagram, Leaf, MapPin, Menu as MenuIcon, MessageCircle, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Sparkles, Utensils, X } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, ShoppingBag, X } from "lucide-react";
 import { available, money, normalize, quoteCart, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
 import { Modal } from "../../shared/ui";
-import { ProductCard, ProductDialog } from "./ProductViews";
+import { FeaturedProduct, ProductCard, ProductDialog } from "./ProductViews";
 
 import { useTheme } from "../../shared/styles/useTheme";
 import { CartDialog, useCart } from "../cart";
@@ -60,7 +60,6 @@ export function Menu({
     const timer = setTimeout(() => setToast(""), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
-  const catsRef = useRef<HTMLElement>(null);
   if (error)
     return (
       <main className="error-page">
@@ -81,8 +80,8 @@ export function Menu({
     );
   const c = catalog,
     count = cart.reduce((n, l) => n + l.quantity, 0),
-    featured = c.products.filter(
-      (p) => p.featured && !p.archived && available(c, p),
+    featured = c.products.find(
+      (p) => p.featured && available(c, p),
     );
   let total: number | null = null;
   try {
@@ -131,13 +130,32 @@ export function Menu({
       20,
     );
   }
-  const icons: Record<string, typeof Leaf> = {
-    marmitas: Utensils,
-    lanches: Utensils,
-    bebidas: Coffee,
-    doces: Cookie,
-    combos: Sparkles,
-  };
+  const contactLinks = (
+    <>
+      {validPhone(c.whatsapp) && (
+        <a
+          href={`https://wa.me/${c.whatsapp}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => { if (!preview) void track("whatsapp_click"); }}
+        >
+          <MessageCircle size={19} aria-hidden="true" />
+          WhatsApp
+        </a>
+      )}
+      {c.instagram && (
+        <a
+          href={`https://www.instagram.com/${c.instagram}/`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={() => { if (!preview) void track("instagram_click"); }}
+        >
+          <Instagram size={19} aria-hidden="true" />
+          Instagram
+        </a>
+      )}
+    </>
+  );
   return (
     <div className={`storefront ${preview ? "preview-store" : ""}`}>
       {!preview && demo && (
@@ -151,190 +169,93 @@ export function Menu({
           Cardápio em preparação. Pedidos online ainda não disponíveis.
         </div>
       )}
+      {!preview && (
+        <a className="skip-link" href="#menu-start">Ir para a busca do cardápio</a>
+      )}
       <header className="site-header">
-        <a
-          className="brand"
-          href={preview ? "#" : "/"}
-          aria-label={`${c.name}, início`}
-        >
-          <img src="/media/logo.webp" width="48" height="48" alt="Fit Já" />
-          <span>
-            <strong>{c.name}</strong>
-            <small>COMIDA SAUDÁVEL</small>
-          </span>
-        </a>
+        <div className="brand">
+          <img src="/media/logo.webp" width="52" height="52" alt="" />
+          <h1 translate="no">{c.name}</h1>
+        </div>
         <div className="header-actions">
-          <span className="header-location">
-            <MapPin size={15} />
-            {c.location}
-          </span>
           <button
-            className="icon-button subtle"
+            className="icon-button store-info"
+            type="button"
             onClick={() => setInfo(true)}
-            aria-label="Informações e economia de dados"
+            aria-label="Informações da loja e economia de dados"
           >
-            <SlidersHorizontal size={20} />
+            <Info size={21} aria-hidden="true" />
           </button>
           <button
             className="header-cart"
+            type="button"
             onClick={() => setCartOpen(true)}
-            aria-label={`Abrir sacola com ${count} itens`}
+            aria-label={`Abrir sacola com ${count} ${count === 1 ? "item" : "itens"}`}
           >
-            <ShoppingBag size={21} />
-            <span className="desktop-only">Sua sacola</span>
+            <ShoppingBag size={19} aria-hidden="true" />
+            <span>Sacola</span>
             {count > 0 && <b>{count}</b>}
           </button>
         </div>
       </header>
       <main>
-        <section className="hero">
-          <div className="hero-copy">
-            <span className="hero-label">
-              <Leaf size={15} /> BOA COMIDA. BOA ENERGIA.
-            </span>
-            <h1>
-              Leve na rotina.
-              <br />
-              <span>Cheio de sabor.</span>
-            </h1>
-            <p>{c.tagline} Refeições e lanches para acompanhar o seu ritmo.</p>
-            <button
-              className="button hero-button"
-              onClick={() => category("all")}
-            >
-              Encontre seu favorito <Utensils size={18} />
-            </button>
-            <div className="hero-facts">
-              <span>
-                <Heart size={15} /> Feito com carinho
-              </span>
-              <span>
-                <MessageCircle size={15} /> Peça pelo WhatsApp
-              </span>
-            </div>
-          </div>
-          <div className="hero-visual" aria-hidden="true">
-            <div className="hero-ring" />
-            <img
-              className="hero-main-food"
-              src="/media/escondidinho-640.webp"
-              alt=""
-              width="320"
-              height="320"
-              fetchPriority="high"
-            />
-            <img
-              className="hero-small-food"
-              src="/media/suco-laranja-320.webp"
-              alt=""
-              width="140"
-              height="180"
-            />
-            <div className="hero-sticker">
-              <Leaf size={22} />
-              <span>
-                Seu dia pede
-                <br />
-                <strong>mais Fit Já.</strong>
-              </span>
-            </div>
-            <span className="hero-sparkle">✳</span>
-            <span className="hero-caption">
-              COMIDA DE VERDADE, DO SEU JEITO.
-            </span>
-          </div>
-        </section>
-        <div className="store-meta">
-          <span>
-            <Clock3 size={17} />
-            {c.hours}
-          </span>
-          <span>
-            <MapPin size={17} />
-            {c.location}
-          </span>
-        </div>
         <div className="menu-shell">
-          <div className="menu-heading" id="menu-start">
-            <div>
-              <span className="eyebrow">ESCOLHA BEM. COMA FELIZ.</span>
-              <h2>O que vai bem hoje?</h2>
-            </div>
-            <label className="search-box">
-              <Search size={20} />
-              <input
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setActive("all");
+          {!query && active === "all" && featured && (
+            <FeaturedProduct product={featured} onSelect={choose} />
+          )}
+          <div className="search-box">
+            <Search size={20} aria-hidden="true" />
+            <input
+              id="menu-start"
+              name="query"
+              type="search"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive("all");
+              }}
+              placeholder="Buscar produtos…"
+              aria-label="Buscar produtos"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  document.getElementById("menu-start")?.focus();
                 }}
-                placeholder="Busque seu próximo favorito"
-                aria-label="Buscar produtos"
-              />
-              {query && (
-                <button onClick={() => setQuery("")} aria-label="Limpar busca">
-                  <X size={17} />
-                </button>
-              )}
-            </label>
+                aria-label="Limpar busca"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            )}
           </div>
-          <nav
-            className="category-nav"
-            ref={catsRef}
-            aria-label="Categorias do cardápio"
-          >
+          <nav className="category-nav" aria-label="Categorias do cardápio">
             <button
+              type="button"
               className={active === "all" ? "active" : ""}
+              aria-pressed={active === "all"}
               onClick={() => category("all")}
             >
-              <MenuIcon size={17} />
-              Tudo de bom
+              Todas as categorias
             </button>
             {c.categories
               .filter((cat) =>
                 c.products.some((p) => p.categoryId === cat.id && !p.archived),
               )
-              .map((cat) => {
-                const Icon = icons[cat.id] || Leaf;
-                return (
-                  <button
-                    key={cat.id}
-                    className={active === cat.id ? "active" : ""}
-                    onClick={() => category(cat.id)}
-                  >
-                    <Icon size={18} />
-                    {cat.name}
-                  </button>
-                );
-              })}
+              .map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={active === cat.id ? "active" : ""}
+                  aria-pressed={active === cat.id}
+                  onClick={() => category(cat.id)}
+                >
+                  {cat.name}
+                </button>
+              ))}
           </nav>
-          {!query && active === "all" && featured.length > 0 && (
-            <section className="featured-section">
-              <div className="section-title">
-                <div>
-                  <span className="eyebrow orange">UMA ESCOLHA SEM ERRO</span>
-                  <h2>
-                    Os favoritos da casa <Heart size={22} />
-                  </h2>
-                </div>
-                <span className="small muted desktop-only">
-                  Uma pausa gostosa começa aqui.
-                </span>
-              </div>
-              <div className="featured-grid">
-                {featured.slice(0, 4).map((p, i) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    catalog={c}
-                    onSelect={choose}
-                    economy={economy}
-                    eager={i < 2}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
           {query &&
             !c.products.some(
               (p) =>
@@ -375,7 +296,6 @@ export function Menu({
               >
                 <div className="section-title">
                   <div>
-                    <span className="eyebrow">UM SABOR PARA CADA MOMENTO</span>
                     <h2>{cat.name}</h2>
                   </div>
                   <span className="category-count">
@@ -397,41 +317,13 @@ export function Menu({
             ))}
           {c.bannerEnabled && (
             <section className="brand-banner">
-              <Leaf size={35} />
+              <Leaf size={35} aria-hidden="true" />
               <div>
-                <span className="eyebrow">
-                  DA NOSSA COZINHA PARA SUA ROTINA
-                </span>
                 <h2>{c.banner}</h2>
-                <p>Você escolhe. A gente prepara com carinho.</p>
               </div>
-              <span className="banner-doodle" aria-hidden="true">
-                ♡
-              </span>
             </section>
           )}
         </div>
-        <section className="how-it-works">
-          <span className="eyebrow">SIMPLES ASSIM</span>
-          <h2>Do cardápio para a sua rotina.</h2>
-          <div>
-            <article>
-              <span>01</span>
-              <h3>Escolha seus favoritos</h3>
-              <p>Explore os sabores e monte sua sacola.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Continue no WhatsApp</h3>
-              <p>Seu pedido vai preenchido. É só enviar.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Combine os detalhes</h3>
-              <p>Pagamento e entrega direto com a equipe.</p>
-            </article>
-          </div>
-        </section>
       </main>
       <footer className="site-footer">
         <div className="footer-top">
@@ -447,30 +339,7 @@ export function Menu({
             <p>{c.hours}</p>
             <p>{c.location}</p>
           </div>
-          <div className="footer-social">
-            {validPhone(c.whatsapp) && (
-              <a
-                href={`https://wa.me/${c.whatsapp}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => void track("whatsapp_click")}
-              >
-                <MessageCircle size={19} />
-                WhatsApp
-              </a>
-            )}
-            {c.instagram && (
-              <a
-                href={`https://www.instagram.com/${c.instagram}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => void track("instagram_click")}
-              >
-                <Instagram size={19} />
-                Instagram
-              </a>
-            )}
-          </div>
+          <div className="footer-social">{contactLinks}</div>
         </div>
         <div className="footer-bottom">
           <span>
@@ -530,9 +399,13 @@ export function Menu({
         />
       )}
       {info && (
-        <Modal title="Bom saber" onClose={() => setInfo(false)}>
-          <div className="detail-content">
-            <h3>Uma experiência mais leve</h3>
+        <Modal title="Informações da loja" onClose={() => setInfo(false)}>
+          <div className="detail-content dialog-scroll">
+            <h3>Horário e localização</h3>
+            <p>{c.hours}</p>
+            <p>{c.location}</p>
+            <div className="footer-social">{contactLinks}</div>
+            <h3>Preferências</h3>
             <label className="switch-row">
               <span>
                 <strong>Economia de dados</strong>
@@ -549,9 +422,6 @@ export function Menu({
                 }}
               />
             </label>
-            <h3>Horário e localização</h3>
-            <p>{c.hours}</p>
-            <p>{c.location}</p>
             <h3>Seu pedido, seus dados</h3>
             <p>
               A sacola fica salva neste navegador por até sete dias. Ao
@@ -585,4 +455,3 @@ export function Menu({
     </div>
   );
 }
-

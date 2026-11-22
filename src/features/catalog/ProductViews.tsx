@@ -75,10 +75,42 @@ export function FoodImage({
         width={large ? 640 : 320}
         height={large ? 480 : 320}
         loading={eager ? "eager" : "lazy"}
+        fetchPriority={eager ? "high" : undefined}
         decoding="async"
         onError={() => setFailed(true)}
       />
     </picture>
+  );
+}
+export function FeaturedProduct({
+  product,
+  onSelect,
+}: {
+  product: Product;
+  onSelect: (product: Product) => void;
+}) {
+  const portion = product.variants[0];
+  return (
+    <article className="featured-product">
+      <div className="featured-photo">
+        <FoodImage image={product.image} name={product.name} economy eager />
+      </div>
+      <div className="featured-details">
+        <h2>{product.name}</h2>
+        <p>{portion.name}</p>
+        <div className="featured-controls">
+          <strong className="featured-price">{money(portion.price)}</strong>
+          <button
+            className="button primary featured-action"
+            type="button"
+            aria-label={`Escolher ${product.name}`}
+            onClick={() => onSelect(product)}
+          >
+            Escolher
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 export function ProductCard({

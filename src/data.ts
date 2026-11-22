@@ -34,6 +34,19 @@ function product(
 }
 const products: Product[] = [
   product(
+    "coxinha",
+    "Coxinha fit",
+    "lanches",
+    "Na medida da sua fome: individual ou para compartilhar.",
+    "coxinha",
+    [
+      ["1 unidade · 120 g", 950],
+      ["2 unidades · 240 g", 1800],
+      ["5 unidades · 600 g", 4200],
+    ],
+    true,
+  ),
+  product(
     "marmita-frango",
     "Marmita de frango",
     "marmitas",
@@ -171,18 +184,6 @@ const products: Product[] = [
       ["Carne moída · 260 g", 1800],
     ],
     true,
-  ),
-  product(
-    "coxinha",
-    "Coxinha fit",
-    "lanches",
-    "Na medida da sua fome: individual ou para compartilhar.",
-    "coxinha",
-    [
-      ["1 unidade · 120 g", 950],
-      ["2 unidades · 240 g", 1800],
-      ["5 unidades · 600 g", 4200],
-    ],
   ),
   product(
     "empada",

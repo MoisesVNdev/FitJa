@@ -124,3 +124,26 @@ Situação da primeira execução: implementação local entregue. A verificaç�
 O log de rede do Chrome registrou `index-BdrrjJm2.js` e `index-BBKRTzkV.css` na rota pública, durante a abertura e o fluxo da sacola. O controle positivo em `/admin` carregou `Admin-C3aX7g_V.js`, `Admin-BDMquTx8.css`, `Dashboard-D9gGLBvc.js`, `SettingsPanel-dEEpBHOs.js` e `Orders-DKnKHLlE.js` ao abrir as telas correspondentes. Nenhum desses cinco arquivos apareceu na rede pública, inclusive após visitar o painel. Os nomes com hash correspondem a este build.
 
 Continuam para o aceite de lançamento os ensaios em iPhone e Android reais, navegador interno do Instagram, teclado virtual, rede limitada e encaminhamento efetivo pelo WhatsApp.
+
+## Etapa 01 do roteiro móvel · Vitrine e identidade
+
+A rota pública usa o cabeçalho com a arte da Fit Já, sacola identificada e acesso a horário, localização e contatos. A vitrine apresenta o primeiro produto marcado como destaque que passa pela regra de disponibilidade do domínio. O botão abre a ficha existente. Sem destaque disponível, a busca vem logo após o cabeçalho. A ordem dos destaques segue a lista do catálogo publicado. O catálogo inicial põe a coxinha em primeiro lugar e mostra a porção cadastrada de 120 g por R$ 9,50. A composição pode ser confirmada com a Laís antes de entrar na ficha.
+
+O painel reutiliza a abertura pública na prévia do rascunho. A largura real da coluna determina a apresentação dos cartões, inclusive na moldura móvel. O cabeçalho e as ações usam as variáveis do tema do catálogo. Os contratos, os identificadores e as chaves de persistência foram preservados. A mudança no destaque de fábrica só vale para o catálogo de demonstração inicial.
+
+### Aceite da etapa
+
+Aprovado localmente no Chrome 158, com perfil descartável, movimento reduzido e dados fictícios nos cenários de personalização e sacola. As comparações partiram do topo da rota `/`, na prévia de produção do Vite, com o mesmo navegador, viewport e catálogo-base. O ensaio usou toque emulado no destaque e confirmou a passagem pela ficha existente.
+
+| Cenário | Resultado e capturas |
+| --- | --- |
+| 390 × 844 | Marca, sacola, busca, categorias e Coxinha fit com porção, preço e ação visíveis sem rolar. A ação termina a 236 px do topo. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-390.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-390.png) · [Ficha](../../artifacts/etapa-01-vitrine-mobile/ficha-390.png) |
+| 393 × 852 | Os mesmos critérios passaram. A ação termina a 222 px e abre a ficha da coxinha. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-393.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-393.png) |
+| Identidade | A faixa laranja `#EA5A1C` permanece visível com a marca e o logotipo ocultos em uma cópia da captura. [Assinatura sem logotipo](../../artifacts/etapa-01-vitrine-mobile/identidade-sem-logo-390.png) |
+| Destaque e dados existentes | Com a coxinha esgotada, a vitrine mostrou a próxima opção de destaque disponível. Sem destaque, abriu diretamente na busca. A recarga preservou o catálogo fictício armazenado e os itens da sacola. [Destaque alternativo](../../artifacts/etapa-01-vitrine-mobile/fallback-esgotado-390.png) · [Sem destaque](../../artifacts/etapa-01-vitrine-mobile/sem-destaque-390.png) |
+| Personalização | Tema azul e fonte Manrope aplicados na rota pública e na prévia do painel. O diálogo exibiu horário, localização e contato fictícios. [Tema salvo](../../artifacts/etapa-01-vitrine-mobile/tema-personalizado-390.png) · [Prévia do painel](../../artifacts/etapa-01-vitrine-mobile/previa-painel-390.png) |
+| Tela larga | Vitrine centralizada a 1366 × 768. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-1366.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-1366.png) |
+
+A revisão com `web-design-guidelines` conferiu os nomes dos controles, o estado das categorias, o foco e o atalho de teclado para a busca, as dimensões das imagens e as áreas de toque dos controles da abertura. A navegação pública continuou sem carregar os arquivos do painel. `npm.cmd test` aprovou 30 testes em quatro arquivos e `npm.cmd run build` passou.
+
+Para revisão da entrega, mostrar a comparação à Laís e confirmar a composição da coxinha. O aceite de lançamento ainda inclui os aparelhos reais e o navegador interno do Instagram.
