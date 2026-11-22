@@ -1250,6 +1250,21 @@
   .order-editor-line > div {
     flex-basis: 100%;
   }
+
+  .data-table td {
+    padding: 12px 8px;
+    font-size: 0.8rem;
+  }
+
+  .data-table th {
+    padding: 8px 8px 10px;
+    font-size: 0.6rem;
+  }
+
+  .data-table .button.compact {
+    min-height: 38px;
+    padding: 6px 10px;
+  }
 }
 @media (max-width: 480px) {
 
