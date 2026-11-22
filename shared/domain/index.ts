@@ -559,6 +559,9 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
   );
   return { lines, total, signature };
 }
+export function portionLabel(quantity: number) {
+  return `${quantity} ${quantity === 1 ? "porção" : "porções"}`;
+}
 export function orderMessage(order: Order, compact = false) {
   const q = order.current;
   return [
@@ -566,7 +569,7 @@ export function orderMessage(order: Order, compact = false) {
     `Referência: ${order.reference}`,
     "",
     ...q.lines.flatMap((l) => [
-      `${l.quantity}× ${l.name} · ${l.variant} — ${money(l.unitPrice)} cada · ${money(l.total)}`,
+      `${l.name} · ${portionLabel(l.quantity)} · ${l.variant} — ${money(l.unitPrice)} por porção · ${money(l.total)}`,
       ...(compact ? [] : l.details.map((d) => `  ${d}`)),
     ]),
     "",

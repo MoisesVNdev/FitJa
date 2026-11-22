@@ -184,7 +184,7 @@ export function Menu({
     </>
   );
   return (
-    <div className={`storefront ${preview ? "preview-store" : ""}`}>
+    <div className={`storefront ${preview ? "preview-store" : ""} ${count && !preview ? "has-cart" : ""}`}>
       {!preview && demo && (
         <div className="demo-strip">
           Prévia local · pedidos e alterações ficam somente neste navegador{" "}
@@ -390,7 +390,7 @@ export function Menu({
         <div className="floating-cart">
           <button onClick={() => setCartOpen(true)}>
             <span className="floating-count">
-              <ShoppingBag size={19} />
+              <ShoppingBag size={19} aria-hidden="true" />
               {count}
             </span>
             <strong>Ver minha sacola</strong>

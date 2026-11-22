@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { initialCatalog } from "../src/data";
 import { orderMessage, quoteCart, whatsappUrl, type CartLine, type Order } from "../shared/domain";
 import type { CheckoutApi } from "../shared/contracts/checkout";
-import { checkoutNotes, createRequest, reviewSelection } from "../src/features/checkout/service";
+import { checkoutNotes, createRequest, describeChanges, inspectSelection, reviewSelection } from "../src/features/checkout/service";
 
 const cart: CartLine[] = [{ key: "item-1", productId: "tapioca", variantId: "frango", quantity: 1, selections: [] }];
 
@@ -24,33 +24,40 @@ function fixture() {
 
 describe("revisão e encaminhamento", () => {
   it("revisar não registra solicitação; criar encaminha escolhas e chave estável ao adaptador", async () => {
-    const { api, selection, quote, order } = fixture();
-    expect((await reviewSelection(api, selection)).quote.total).toBe(900);
+    const { api, selection, quote, order, catalog } = fixture();
+    expect((await reviewSelection(api, selection)).quote?.total).toBe(900);
     expect(api.submitOrder).not.toHaveBeenCalled();
-    const input = { cart: selection, notes: order.notes, key: "request-key", signature: quote.signature, token: "" };
+    const input = { cart: selection, notes: order.notes, key: "request-key", signature: quote.signature, token: "", whatsapp: catalog.whatsapp };
     expect(await createRequest(api, input)).toBe(order);
     expect(await createRequest(api, input)).toBe(order);
-    expect(api.submitOrder).toHaveBeenLastCalledWith(selection, order.notes, "request-key", quote.signature, "");
+    expect(api.submitOrder).toHaveBeenLastCalledWith(selection, order.notes, "request-key", quote.signature, "", catalog.whatsapp);
+    expect(api.loadCatalog).toHaveBeenCalledTimes(1);
   });
 
-  it("interrompe criação quando preço ou disponibilidade mudam", async () => {
-    const { api, selection, quote, catalog } = fixture();
-    const input = { cart: selection, notes: "", key: "request-key", signature: quote.signature, token: "" };
+  it("identifica nas linhas preço alterado e esgotamento, mantendo as escolhas válidas", async () => {
+    const { api, selection, catalog } = fixture();
+    selection.push({ key: "linha-2", productId: "marmita-frango", variantId: "v0", quantity: 1, selections: [] });
+    const before = inspectSelection(catalog, selection);
     catalog.products.find((p) => p.id === "tapioca")!.variants[0].price += 100;
-    await expect(createRequest(api, input)).rejects.toThrow(/cardápio mudou/);
-    catalog.products.find((p) => p.id === "tapioca")!.available = false;
-    await expect(createRequest(api, input)).rejects.toThrow();
+    catalog.products.find((p) => p.id === "marmita-frango")!.available = false;
+    const after = await reviewSelection(api, selection);
+    expect(describeChanges(before, after)[selection[0].key]).toMatch(/9,00.*10,00/);
+    expect(after.lines[0].quote?.variantId).toBe(selection[0].variantId);
+    expect(after.lines[1].problem).toMatch(/indisponível/);
+    expect(after.quote).toBeNull();
     expect(api.submitOrder).not.toHaveBeenCalled();
   });
 
   it("preserva falhas de rede e impede registro sem contato válido", async () => {
     const { api, selection, quote, catalog } = fixture();
-    const input = { cart: selection, notes: "", key: "request-key", signature: quote.signature, token: "" };
-    catalog.whatsapp = "";
+    const input = { cart: selection, notes: "", key: "request-key", signature: quote.signature, token: "", whatsapp: "" };
     await expect(createRequest(api, input)).rejects.toThrow(/WhatsApp/);
     expect(api.submitOrder).not.toHaveBeenCalled();
     vi.mocked(api.loadCatalog).mockRejectedValueOnce(new Error("Sem conexão"));
     await expect(reviewSelection(api, selection)).rejects.toThrow("Sem conexão");
+    vi.mocked(api.submitOrder).mockRejectedValueOnce(new Error("Resposta perdida"));
+    await expect(createRequest(api, { ...input, whatsapp: catalog.whatsapp })).rejects.toThrow("Resposta perdida");
+    expect(api.loadCatalog).toHaveBeenCalledTimes(1);
   });
 
   it("mantém referência, preferência, observações e lista completa no resumo e link curto", () => {

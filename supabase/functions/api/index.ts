@@ -216,6 +216,13 @@ Deno.serve(async (req) => {
           signature: body.expectedSignature,
         }),
       );
+      const reviewedCatalog = typeof body.expectedWhatsApp === "string" ? await getCatalog() : null;
+      if (reviewedCatalog) {
+        assert(
+          reviewedCatalog.whatsapp === body.expectedWhatsApp,
+          "O contato do WhatsApp mudou. Revise a sacola.",
+        );
+      }
       const { data: existing } = await service
         .from("orders")
         .select("*")
@@ -228,7 +235,7 @@ Deno.serve(async (req) => {
         );
         return json(publicOrder(existing));
       }
-      const c = await getCatalog();
+      const c = reviewedCatalog ?? await getCatalog();
       assert(validPhone(c.whatsapp), "WhatsApp da loja ainda não configurado.");
       const q = quoteCart(c, body.cart);
       assert(

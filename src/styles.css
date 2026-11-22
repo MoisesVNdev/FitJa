@@ -750,12 +750,20 @@ fieldset {
 }
 .floating-cart {
   position: fixed;
-  bottom: 22px;
+  bottom: calc(22px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 440px;
   max-width: calc(100% - 32px);
   z-index: 8;
+}
+.storefront.has-cart {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+@media (pointer: coarse) {
+  .storefront:has(:is(input, textarea, select):focus) .floating-cart {
+    display: none;
+  }
 }
 .floating-cart > button {
   display: flex;
@@ -763,8 +771,8 @@ fieldset {
   gap: 15px;
   justify-content: space-between;
   width: 100%;
-  background: var(--green);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-text);
   padding: 15px 20px;
   border-radius: 14px;
   box-shadow: 0 7px 25px #0d381a38;
@@ -774,7 +782,7 @@ fieldset {
   display: flex;
   align-items: center;
   gap: 8px;
-  border-right: 1px solid #ffffff30;
+  border-right: 1px solid currentColor;
   padding-right: 15px;
 }
 .toast {
@@ -1053,6 +1061,18 @@ fieldset {
 }
 .modal-footer > p {
   margin-top: 9px;
+}
+.cart-modal .whatsapp {
+  background: var(--primary);
+  color: var(--primary-text);
+}
+.cart-modal .cart-item-bottom .quantity button,
+.cart-modal .cart-item-bottom .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.cart-modal .fulfillment-options {
+  flex-wrap: wrap;
 }
 .purchase-row {
   display: flex;
@@ -1463,6 +1483,11 @@ fieldset {
   }
   .modal.wide {
     width: 100%;
+  }
+  .modal.cart-modal {
+    position: fixed;
+    inset: auto 0 var(--modal-keyboard-inset, 0px);
+    max-height: min(94dvh, var(--modal-visible-height, 94dvh));
   }
   .modal-header {
     padding: 14px 18px;

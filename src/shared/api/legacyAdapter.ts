@@ -6,6 +6,7 @@ import {
   assert,
   orderReference,
   quoteCart,
+  validPhone,
   validateCatalog,
   validateOrderEdit,
   type Catalog,
@@ -145,9 +146,16 @@ export async function submitOrder(
   idempotencyKey: string,
   expectedSignature: string,
   token: string,
+  expectedWhatsApp?: string,
 ): Promise<Order> {
   if (demo) {
-    const quote = quoteCart(await loadCatalog(), cart);
+    const catalog = await loadCatalog();
+    assert(validPhone(catalog.whatsapp), "WhatsApp da loja ainda não configurado.");
+    assert(
+      expectedWhatsApp === undefined || catalog.whatsapp === expectedWhatsApp,
+      "O contato do WhatsApp mudou. Revise a sacola.",
+    );
+    const quote = quoteCart(catalog, cart);
     assert(
       quote.signature === expectedSignature,
       "O cardápio mudou. Atualize a revisão antes de continuar.",
@@ -186,6 +194,7 @@ export async function submitOrder(
     idempotencyKey,
     expectedSignature,
     token,
+    expectedWhatsApp,
   });
 }
 export async function listOrders(): Promise<Order[]> {
