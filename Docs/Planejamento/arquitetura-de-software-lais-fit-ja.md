@@ -147,3 +147,36 @@ Aprovado localmente no Chrome 158, com perfil descartável, movimento reduzido e
 A revisão com `web-design-guidelines` conferiu os nomes dos controles, o estado das categorias, o foco e o atalho de teclado para a busca, as dimensões das imagens e as áreas de toque dos controles da abertura. A navegação pública continuou sem carregar os arquivos do painel. `npm.cmd test` aprovou 30 testes em quatro arquivos e `npm.cmd run build` passou.
 
 Para revisão da entrega, mostrar a comparação à Laís e confirmar a composição da coxinha. O aceite de lançamento ainda inclui os aparelhos reais e o navegador interno do Instagram.
+
+## Etapa 02 do roteiro móvel · Catálogo e busca
+
+### Conferência do catálogo de demonstração
+
+As respostas do questionário e as decisões posteriores do produto orientam a demonstração em perfil novo. A arte física é a referência dos recortes fotográficos e de parte dos cadastros. A Laís ainda precisa aprovar o conteúdo definitivo para publicação. [Questionário](../respostas-lais-fit-ja.md) · [Decisões de produto](design-e-arquitetura-front-end-lais-fit-ja.md#exemplos-do-questionário-para-conferir-a-interface)
+
+| Cadastro conferido | Aplicação na demonstração |
+| --- | --- |
+| Marmita de frango | Arroz, feijão e frango em cubos. 300 g por R$ 16,00, 350 g por R$ 18,00, 400 g por R$ 20,00 e 500 g por R$ 22,00. De 350 g em diante, inclui legumes. |
+| Marmita de carne moída | Arroz, feijão e carne moída. 300 g por R$ 18,00, 350 g por R$ 20,00, 400 g e 500 g por R$ 22,00. De 350 g em diante, inclui legumes. |
+| Escondidinho | Preservada a variante de carne moída de 300 g por R$ 21,00, junto das outras variantes cadastradas. |
+| Bolo de banana | Nome alinhado para Bolo fit de banana, com a fatia de 100 g por R$ 5,00 já cadastrada. Mantidas as demais variantes existentes. |
+| Coxinha | Mantida como primeiro destaque. A descrição usa a composição da resposta 1. As porções e preços existentes foram preservados. A demonstração mantém Lanches como categoria da coxinha, que aparece acima da lista de Marmitas prontas por ser destaque. |
+| Café | Café puro, café com leite e cappuccino em copo ficam arquivados no catálogo inicial. O café gelado foi mantido, pois a imagem da arte mostra o produto em garrafa. |
+
+A arte antiga mostra R$ 24,00 e R$ 26,00 nas marmitas de 500 g. A demonstração usa R$ 22,00 para ambas, conforme a resposta mais recente da Laís. Confirmar com ela esses preços, os recortes das marmitas e a categoria definitiva da coxinha, pois a resposta 1 também menciona Marmitas prontas. Os exemplos de combo aguardam a definição dos sabores e preços antes de cadastro.
+
+### Implementação e aceite
+
+O catálogo de demonstração abre na categoria de ID `marmitas`, rotulada Marmitas prontas no catálogo inicial. Se esse ID estiver ausente ou sem itens visíveis, abre em Todas as categorias. A ordem e os nomes dos grupos salvos continuam vindo do catálogo publicado. A consulta global usa nome, descrição, ingredientes e variantes sem diferenciar acentos. O filtro da busca é independente da categoria em navegação. Ao limpar, a interface retoma o grupo anterior. O foco volta ao campo ao acionar a limpeza. Produtos esgotados continuam listados com rótulo e inclusão desabilitada. Arquivados ficam fora da navegação e da busca.
+
+Os IDs de produto, categoria e variantes existentes foram preservados. As variantes novas de 350 g usam `v3` em cada marmita. A composição por porção usa o nome da variante existente, que chega à ficha e à sacola. Publicação e rascunho salvos seguem com seus dados originais. Nenhuma migração foi necessária.
+
+**Aceite local no Chrome 158 a 390 × 844 px**, pela prévia do build, com perfil descartável e dados fictícios.
+
+| Cenário | Resultado e evidência |
+| --- | --- |
+| Demonstração nova | Abriu em Marmitas prontas. A ficha exibiu composição e preços das quatro porções de frango. A de 300 g entrou na sacola por R$ 16,00. [Antes](../../artifacts/etapa-02-catalogo-mobile/antes-390.png) · [Lista](../../artifacts/etapa-02-catalogo-mobile/marmitas-390.png) · [Ficha](../../artifacts/etapa-02-catalogo-mobile/ficha-marmita-390.png) · [Sacola](../../artifacts/etapa-02-catalogo-mobile/sacola-marmita-390.png) |
+| Busca e filtro | Partindo de Lanches, `frango` encontrou itens em Marmitas prontas e Lanches, com categoria em cada cartão. O filtro restringiu os resultados. Doces sem resultados ofereceu busca em todas as categorias ou limpeza. Limpar retornou a Lanches. `sanduiche` encontrou Sanduíche natural e `cafe` encontrou o café gelado de garrafa. [Busca](../../artifacts/etapa-02-catalogo-mobile/busca-frango-390.png) · [Categoria sem resultados](../../artifacts/etapa-02-catalogo-mobile/filtro-sem-resultados-390.png) |
+| Catálogo salvo | O catálogo anterior fictício manteve o nome Refeições, um produto renomeado, marmita arquivada fora da lista e escondidinho esgotado sem ação de inclusão. O publicado e o rascunho permaneceram idênticos no armazenamento. [Catálogo anterior](../../artifacts/etapa-02-catalogo-mobile/catalogo-anterior-esgotado-390.png) |
+
+A revisão com `web-design-guidelines` conferiu seleção programática dos filtros, texto de esgotamento, anúncio de resultados, foco ao limpar e área de toque de 44 px na ação dos cartões. `npm.cmd test` passou com 31 testes e `npm.cmd run build` passou.

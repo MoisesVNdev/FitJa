@@ -3,15 +3,16 @@ import type {
   Product,
   Variant,
 } from "../shared/domain";
-const variants = (values: [string, number][]): Variant[] =>
-  values.map(([name, price], i) => ({ id: `v${i}`, name, price }));
+type SeedVariant = [name: string, price: number, id?: string];
+const variants = (values: SeedVariant[]): Variant[] =>
+  values.map(([name, price, id], i) => ({ id: id ?? `v${i}`, name, price }));
 function product(
   id: string,
   name: string,
   categoryId: string,
   description: string,
   image: string,
-  values: [string, number][],
+  values: SeedVariant[],
   featured = false,
   badge = "",
 ): Product {
@@ -37,7 +38,7 @@ const products: Product[] = [
     "coxinha",
     "Coxinha fit",
     "lanches",
-    "Na medida da sua fome: individual ou para compartilhar.",
+    "Massa de batata inglesa, frango desfiado e queijo muçarela.",
     "coxinha",
     [
       ["1 unidade · 120 g", 950],
@@ -50,26 +51,26 @@ const products: Product[] = [
     "marmita-frango",
     "Marmita de frango",
     "marmitas",
-    "Sua pausa para comer bem. Frango, feijão e arroz; legumes nas opções a partir de 400 g.",
-    "marmita",
+    "Arroz, feijão e frango em cubos. As porções a partir de 350 g também incluem legumes.",
+    "marmita-frango",
     [
-      ["300 g", 1900],
-      ["400 g", 2400],
-      ["500 g", 2800],
+      ["300 g · Arroz, frango e feijão", 1600, "v0"],
+      ["350 g · Arroz, frango, legumes e feijão", 1800, "v3"],
+      ["400 g · Arroz, frango, legumes e feijão", 2000, "v1"],
+      ["500 g · Arroz, frango, legumes e feijão", 2200, "v2"],
     ],
-    true,
-    "Para o dia a dia",
   ),
   product(
     "marmita-carne",
     "Marmita de carne moída",
     "marmitas",
-    "Arroz, feijão e carne moída. Legumes nas opções a partir de 400 g.",
-    "marmitas",
+    "Arroz, feijão e carne moída. As porções a partir de 350 g também incluem legumes.",
+    "marmita",
     [
-      ["300 g", 2100],
-      ["400 g", 2600],
-      ["500 g", 3000],
+      ["300 g · Arroz, carne moída e feijão", 1800, "v0"],
+      ["350 g · Arroz, carne moída, legumes e feijão", 2000, "v3"],
+      ["400 g · Arroz, carne moída, legumes e feijão", 2200, "v1"],
+      ["500 g · Arroz, carne moída, legumes e feijão", 2200, "v2"],
     ],
   ),
   product(
@@ -341,7 +342,7 @@ const products: Product[] = [
   ),
   product(
     "bolo-banana",
-    "Bolo de banana",
+    "Bolo fit de banana",
     "doces",
     "Em fatias ou inteiro para compartilhar.",
     "bolo-banana",
@@ -407,17 +408,8 @@ const products: Product[] = [
     ],
   ),
 ];
-// No prices for plain marmitas or standalone salad are visible in the supplied art.
-// Keep these unpublished instead of treating inferred values as an approved menu.
-for (const p of products.filter((p) =>
-  ["marmita-frango", "marmita-carne", "salada"].includes(p.id),
-)) {
-  p.archived = true;
-  p.featured = false;
-  p.variants = p.variants.map((v) => ({ ...v, price: 0 }));
-  p.description =
-    "Aguardando cadastro de composição e preços pela proprietária.";
-}
+// Keep counter drinks and the unpriced standalone salad available in the editor.
+const archivedProducts = new Set(["cafe", "cafe-leite", "cappuccino", "salada"]);
 export const initialCatalog: Catalog = {
   version: "initial",
   name: "Laís Fit Já",
@@ -440,16 +432,18 @@ export const initialCatalog: Catalog = {
   categories: [
     {
       id: "marmitas",
-      name: "Refeições",
+      name: "Marmitas prontas",
       color: "#F1F5EC",
       textColor: "#24382B",
     },
     { id: "lanches", name: "Lanches", color: "#FFF1E9", textColor: "#24382B" },
-    { id: "bebidas", name: "Bebidas", color: "#EEF6F1", textColor: "#24382B" },
     { id: "doces", name: "Doces", color: "#FCF1E9", textColor: "#24382B" },
+    { id: "bebidas", name: "Bebidas", color: "#EEF6F1", textColor: "#24382B" },
     { id: "combos", name: "Combos", color: "#EAF1E6", textColor: "#24382B" },
   ],
-  products,
+  products: products.map((p) =>
+    archivedProducts.has(p.id) ? { ...p, archived: true } : p,
+  ),
 };
 export function newProduct(categoryId: string): Product {
   return {

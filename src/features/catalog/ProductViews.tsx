@@ -116,12 +116,14 @@ export function FeaturedProduct({
 export function ProductCard({
   product: p,
   catalog,
+  categoryName,
   economy,
   onSelect,
   eager = false,
 }: {
   product: Product;
   catalog: Catalog;
+  categoryName?: string;
   economy: boolean;
   onSelect: (p: Product) => void;
   eager?: boolean;
@@ -133,7 +135,7 @@ export function ProductCard({
       <button
         className="product-photo"
         onClick={() => onSelect(p)}
-        aria-label={`Ver ${p.name}`}
+        aria-label={`Ver ${p.name}${ready ? "" : " · Esgotado"}`}
       >
         <FoodImage
           image={p.image}
@@ -145,6 +147,7 @@ export function ProductCard({
         {!ready && <span className="out-badge">Esgotado</span>}
       </button>
       <div className="product-copy">
+        {categoryName && <span className="product-category">{categoryName}</span>}
         <button className="product-title" onClick={() => onSelect(p)}>
           {p.name}
         </button>

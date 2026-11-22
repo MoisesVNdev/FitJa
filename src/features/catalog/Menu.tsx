@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, ShoppingBag, X } from "lucide-react";
 import { available, money, normalize, quoteCart, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
@@ -20,11 +20,13 @@ export function Menu({
     ),
     [error, setError] = useState("");
   const [query, setQuery] = useState(""),
-    [active, setActive] = useState("all"),
+    [browseCategory, setBrowseCategory] = useState<string | null>(),
+    [searchCategory, setSearchCategory] = useState<string | null>(null),
     [selected, setSelected] = useState<Product | null>(null),
     [editLine, setEditLine] = useState<CartLine | undefined>();
   const [cartOpen, setCartOpen] = useState(false),
     [toast, setToast] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
   const { cart, setCart } = useCart(preview, setToast);
   const [economy, setEconomy] = useState(() => {
       const saved = storage.get<boolean | null>("economy", null);
@@ -89,15 +91,30 @@ export function Menu({
   } catch {
     /* Cart review identifies stale products. */
   }
-  const filtered = (categoryId: string) =>
-    c.products.filter(
-      (p) =>
-        !p.archived &&
-        p.categoryId === categoryId &&
-        normalize(
-          `${p.name} ${p.description} ${p.variants.map((v) => v.name).join(" ")}`,
-        ).includes(normalize(query)),
-    );
+  const term = normalize(query.trim());
+  const sections = c.categories
+    .map((category) => ({
+      category,
+      products: c.products.filter((p) => p.categoryId === category.id && !p.archived),
+    }))
+    .filter(({ products }) => products.length > 0);
+  const requestedCategory = term
+    ? searchCategory
+    : browseCategory === undefined ? "marmitas" : browseCategory;
+  const activeCategory = sections.find(({ category }) => category.id === requestedCategory);
+  const active = activeCategory?.category.id ?? null;
+  const visibleSections = sections
+    .filter(({ category }) => active === null || category.id === active)
+    .map(({ category, products }) => ({
+      category,
+      products: term
+        ? products.filter((p) => normalize(
+          [p.name, p.description, p.ingredients, ...p.variants.map((v) => v.name)].join(" "),
+        ).includes(term))
+        : products,
+    }))
+    .filter(({ products }) => products.length > 0);
+  const resultCount = visibleSections.reduce((sum, { products }) => sum + products.length, 0);
   function choose(p: Product, line?: CartLine) {
     setSelected(p);
     setEditLine(line);
@@ -115,20 +132,14 @@ export function Menu({
     );
     if (!preview) void track("add_to_cart", line.productId);
   }
-  function category(id: string) {
-    setActive(id);
-    setTimeout(
-      () =>
-        document
-          .getElementById(id === "all" ? "menu-start" : `section-${id}`)
-          ?.scrollIntoView({
-            behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-              ? "instant"
-              : "smooth",
-            block: "start",
-          }),
-      20,
-    );
+  function chooseCategory(id: string | null) {
+    if (term) setSearchCategory(id);
+    else setBrowseCategory(id);
+  }
+  function clearSearch() {
+    setQuery("");
+    setSearchCategory(null);
+    searchInput.current?.focus();
   }
   const contactLinks = (
     <>
@@ -200,20 +211,22 @@ export function Menu({
       </header>
       <main>
         <div className="menu-shell">
-          {!query && active === "all" && featured && (
+          {!term && featured && (
             <FeaturedProduct product={featured} onSelect={choose} />
           )}
           <div className="search-box">
             <Search size={20} aria-hidden="true" />
             <input
               id="menu-start"
+              ref={searchInput}
               name="query"
               type="search"
               autoComplete="off"
               value={query}
               onChange={(e) => {
-                setQuery(e.target.value);
-                setActive("all");
+                const value = e.target.value;
+                setQuery(value);
+                if (!value.trim()) setSearchCategory(null);
               }}
               placeholder="Buscar produtos…"
               aria-label="Buscar produtos"
@@ -221,100 +234,101 @@ export function Menu({
             {query && (
               <button
                 type="button"
-                onClick={() => {
-                  setQuery("");
-                  document.getElementById("menu-start")?.focus();
-                }}
+                onClick={clearSearch}
                 aria-label="Limpar busca"
               >
                 <X size={18} aria-hidden="true" />
               </button>
             )}
           </div>
-          <nav className="category-nav" aria-label="Categorias do cardápio">
+          <nav
+            className="category-nav"
+            aria-label={term ? "Filtrar resultados por categoria" : "Categorias do cardápio"}
+          >
             <button
               type="button"
-              className={active === "all" ? "active" : ""}
-              aria-pressed={active === "all"}
-              onClick={() => category("all")}
+              className={active === null ? "active" : ""}
+              aria-pressed={active === null}
+              onClick={() => chooseCategory(null)}
             >
               Todas as categorias
             </button>
-            {c.categories
-              .filter((cat) =>
-                c.products.some((p) => p.categoryId === cat.id && !p.archived),
-              )
-              .map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  className={active === cat.id ? "active" : ""}
-                  aria-pressed={active === cat.id}
-                  onClick={() => category(cat.id)}
-                >
-                  {cat.name}
-                </button>
-              ))}
-          </nav>
-          {query &&
-            !c.products.some(
-              (p) =>
-                !p.archived &&
-                normalize(
-                  `${p.name} ${p.description} ${p.variants.map((v) => v.name).join(" ")}`,
-                ).includes(normalize(query)),
-            ) && (
-              <div className="empty">
-                <Search />
-                <h3>Não encontramos esse sabor.</h3>
-                <p>Tente buscar por um ingrediente ou outro nome.</p>
-                <button
-                  className="button secondary"
-                  onClick={() => setQuery("")}
-                >
-                  Ver todo o cardápio
-                </button>
-              </div>
-            )}
-          {c.categories
-            .filter(
-              (cat) =>
-                (active === "all" || active === cat.id) &&
-                filtered(cat.id).length > 0,
-            )
-            .map((cat) => (
-              <section
-                id={`section-${cat.id}`}
-                className="category-section"
+            {sections.map(({ category: cat }) => (
+              <button
                 key={cat.id}
-                style={
-                  {
-                    "--section-bg": cat.color,
-                    "--section-text": cat.textColor,
-                  } as CSSProperties
-                }
+                type="button"
+                className={active === cat.id ? "active" : ""}
+                aria-pressed={active === cat.id}
+                onClick={() => chooseCategory(cat.id)}
               >
-                <div className="section-title">
-                  <div>
-                    <h2>{cat.name}</h2>
-                  </div>
-                  <span className="category-count">
-                    {filtered(cat.id).length} opções
-                  </span>
-                </div>
-                <div className="product-grid">
-                  {filtered(cat.id).map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      catalog={c}
-                      onSelect={choose}
-                      economy={economy}
-                    />
-                  ))}
-                </div>
-              </section>
+                {cat.name}
+              </button>
             ))}
+          </nav>
+          {term && (
+            <p className="search-summary" role="status">
+              {resultCount === 0
+                ? activeCategory
+                  ? `Nenhum resultado em ${activeCategory.category.name}.`
+                  : "Nenhum produto encontrado."
+                : `${resultCount} ${resultCount === 1 ? "produto encontrado" : "produtos encontrados"}`}
+            </p>
+          )}
+          {visibleSections.length === 0 && (
+            <div className="empty search-empty">
+              <p>{term ? "Tente outro termo ou limpe a busca." : "Ainda não há produtos no cardápio."}</p>
+              {term && (
+                <div>
+                  <button type="button" className="button secondary" onClick={clearSearch}>
+                    Limpar busca
+                  </button>
+                  {activeCategory && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => {
+                        setSearchCategory(null);
+                        searchInput.current?.focus();
+                      }}
+                    >
+                      Buscar em todas as categorias
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {visibleSections.map(({ category: cat, products }) => (
+            <section
+              className="category-section"
+              key={cat.id}
+              style={
+                {
+                  "--section-bg": cat.color,
+                  "--section-text": cat.textColor,
+                } as CSSProperties
+              }
+            >
+              <div className="section-title">
+                <h2>{cat.name}</h2>
+                <span className="category-count">
+                  {products.length} {products.length === 1 ? "produto" : "produtos"}
+                </span>
+              </div>
+              <div className="product-grid">
+                {products.map((p) => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    catalog={c}
+                    categoryName={term ? cat.name : undefined}
+                    onSelect={choose}
+                    economy={economy}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
           {c.bannerEnabled && (
             <section className="brand-banner">
               <Leaf size={35} aria-hidden="true" />

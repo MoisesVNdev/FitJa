@@ -67,6 +67,8 @@ function combos(c: Catalog) {
       },
     ],
   };
+  // Use an explicitly offered drink for the fixed-combo fixture.
+  c.products.find((p) => p.id === "cafe")!.archived = false;
   c.products.push(fixed, builder);
   return { fixed, builder };
 }
@@ -77,18 +79,31 @@ describe("catálogo e preço canônico", () => {
     expect(c.products.every((p) => p.variants.every((v) => !v.nutrition))).toBe(
       true,
     );
-    expect(c.products.find((p) => p.id === "marmita-frango")?.archived).toBe(
-      true,
-    );
+    expect(c.products.filter((p) => p.archived).map((p) => p.id)).toEqual([
+      "salada", "cafe", "cafe-leite", "cappuccino",
+    ]);
+  });
+  it("mantém os IDs das marmitas existentes e cotação dos pesos de demonstração", () => {
+    const c = catalog();
+    for (const [id, prices] of [
+      ["marmita-frango", [1600, 1800, 2000, 2200]],
+      ["marmita-carne", [1800, 2000, 2200, 2200]],
+    ] as const) {
+      const variants = c.products.find((p) => p.id === id)!.variants;
+      expect(variants.map((v) => [v.id, v.name.slice(0, 5)])).toEqual([
+        ["v0", "300 g"], ["v3", "350 g"], ["v1", "400 g"], ["v2", "500 g"],
+      ]);
+      expect(variants.map((v) => quoteCart(c, [line(id, v.id)]).total)).toEqual(prices);
+    }
   });
   it("calcula cinco itens diferentes em centavos", () => {
     const c = catalog(),
-      cart = ["tapioca", "sanduiche", "escondidinho", "lasanha", "cafe"].map(
+      cart = ["tapioca", "sanduiche", "escondidinho", "lasanha", "marmita-frango"].map(
         (id, i) => ({ ...line(id), key: `line-${i}` }),
       );
     const q = quoteCart(c, cart);
     expect(q.lines).toHaveLength(5);
-    expect(q.total).toBe(5950);
+    expect(q.total).toBe(7300);
   });
   it("ignora valores adulterados no carrinho", () => {
     const c = catalog(),
@@ -112,7 +127,7 @@ describe("catálogo e preço canônico", () => {
     const c = catalog();
     c.products.find((p) => p.id === "tapioca")!.available = false;
     expect(() => quoteCart(c, [line()])).toThrow(/indisponível/);
-    expect(() => quoteCart(c, [line("marmita-frango")])).toThrow();
+    expect(() => quoteCart(c, [line("cafe")])).toThrow(/indisponível/);
   });
 });
 describe("combos e adicionais", () => {
