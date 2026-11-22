@@ -1,0 +1,5 @@
+project_id = "lais-fit-ja"
+
+[functions.api]
+# Public checkout/events share this function; admin actions validate the JWT themselves.
+verify_jwt = false

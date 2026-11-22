@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laís Fit Já — Questionário do cardápio</title>
+  <style>
+    :root { color-scheme: light; --ink: #30231e; --muted: #63514a; --orange: #a93c12; --line: #e5d8d0; --page: #fff7f0; font: 100%/1.55 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--page); }
+    main { width: min(100% - 2rem, 49rem); margin: clamp(1rem, 5vw, 3rem) auto; }
+    header, .progress, section, footer { background: white; border: 1px solid var(--line); border-radius: 1rem; padding: clamp(1rem, 4vw, 1.8rem); margin: 0 0 1rem; }
+    header { border-top: .55rem solid #ea5a1c; }
+    .brand { color: var(--orange); font-weight: 800; margin: 0; }
+    h1, h2 { line-height: 1.15; margin: .35em 0; }
+    h1 { font-size: clamp(1.75rem, 5vw, 2.65rem); }
+    h2 { font-size: 1.38rem; }
+    p { margin: .55rem 0; }
+    .intro, .hint, #draft-status { color: var(--muted); }
+    progress { display: block; width: 100%; height: .75rem; accent-color: var(--orange); margin: .5rem 0; }
+    fieldset { min-width: 0; margin: 1.5rem 0 0; border: 0; padding: 0; }
+    legend { padding: 0; font-weight: 750; }
+    .hint { margin: .35rem 0 .65rem; font-size: .92rem; }
+    .choice { display: flex; align-items: center; gap: .7rem; min-height: 44px; padding: .45rem .6rem; border-radius: .5rem; }
+    .choice:hover { background: var(--page); }
+    input[type=radio], input[type=checkbox] { accent-color: var(--orange); width: 1.05rem; height: 1.05rem; flex: none; }
+    textarea, select { display: block; width: 100%; padding: .65rem; border: 1px solid #ac9286; border-radius: .55rem; background: #fff; color: var(--ink); font: inherit; }
+    textarea { min-height: 5rem; resize: vertical; }
+    .details-label { display: block; margin: .7rem 0 .35rem; font-size: .9rem; color: var(--muted); }
+    button { display: inline-flex; align-items: center; min-height: 46px; padding: .65rem 1rem; border-radius: .6rem; border: 1px solid var(--orange); color: white; background: var(--orange); font: inherit; font-weight: 750; cursor: pointer; }
+    :focus-visible { outline: 3px solid #277044; outline-offset: 3px; }
+    #export-status { color: #275b39; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="brand">Laís Fit Já</p>
+      <h1>Vamos definir seu cardápio online?</h1>
+      <p>Laís, suas respostas vão orientar como os clientes escolhem produtos no site e como você organiza os pedidos.</p>
+      <p class="intro">O cliente coloca os produtos numa lista chamada sacola e envia essa lista pelo WhatsApp. Você responde dizendo o que consegue preparar e combina o preço final, o pagamento e a entrega. Quem enviar fora do horário verá os dias e horários em que você atende.</p>
+      <p>Você pode marcar uma opção ou escrever do seu jeito. Quando der para marcar mais de uma, a pergunta vai avisar. Se ainda estiver em dúvida, pode pular e salvar o que já respondeu.</p>
+    </header>
+    <div class="progress">
+      <div id="progress-text"></div>
+      <progress id="progress" aria-labelledby="progress-text" value="0" max="1"></progress>
+      <p id="draft-status" class="hint"></p>
+    </div>
+    <noscript><p>Abra este arquivo em um navegador com JavaScript ativado para preencher e salvar o questionário.</p></noscript>
+    <form id="questionnaire">
+      <div id="sections"></div>
+      <footer>
+        <h2>Salvar e enviar</h2>
+        <p>O botão baixa um arquivo de texto com suas respostas, chamado <strong>respostas-lais-fit-ja.md</strong>. Procure-o na pasta Downloads ou no local em que você escolheu salvar. Depois, envie esse arquivo como documento na conversa do WhatsApp.</p>
+        <button type="submit">Salvar minhas respostas</button>
+        <p id="export-status" role="status"></p>
+      </footer>
+    </form>
+  </main>
+  <script>
+    "use strict";
+
+    const sections = [
+      {
+        title: "O que o cliente vê no cardápio",
+        intro: "Vamos começar por como o cliente encontra os produtos quando abre seu cardápio no celular.",
+        questions: [
+          { id: "q01", title: "O que o cliente deve ver primeiro ao abrir o cardápio no celular?", hint: "Você pode começar pela lista ou mostrar alguns produtos escolhidos por você antes dela, como a marmita do dia ou uma oferta. Diga também qual grupo de produtos deve aparecer primeiro na lista, como marmitas prontas ou lanches.", choices: ["Quero que a lista de produtos apareça logo de cara", "Quero mostrar alguns produtos escolhidos por mim antes da lista", "Quero ver um exemplo das duas telas antes de escolher"] },
+          { id: "q02", title: "Se a marmita que você escolheu para mostrar no começo do cardápio acabar, o que deve acontecer ali?", choices: ["Tirar a marmita daquele espaço", "Deixar a marmita ali com o aviso “Esgotado”", "Mostrar outro produto que eu já tenha escolhido", "Prefiro começar só com a lista de produtos"], hint: "Esse espaço é como uma pequena vitrine no começo do cardápio. Vale para qualquer produto que você escolha mostrar ali. Mais adiante perguntamos o que acontece na lista normal." },
+          { id: "formato-destaques", title: "Se você escolher dois ou mais produtos para mostrar no começo, como eles devem aparecer?", choices: ["Mostrar todos de uma vez", "Deixar o cliente passar de um para outro quando quiser", "Quero ver um exemplo de cada jeito"], hint: "Por exemplo, uma marmita e um suco podem ficar à vista ao mesmo tempo, ou o cliente pode deslizar para o lado para ver o próximo. Pule se preferir começar só com a lista." },
+          { id: "q03", title: "Se alguém digitar “frango” enquanto olha os lanches, o que a busca deve mostrar?", choices: ["Resultados de todo o cardápio juntos", "Só os lanches com frango", "Resultados de todo o cardápio, com opção de ver só um grupo, como marmitas"], hint: "Ao voltar da página de um produto, a pessoa encontra a mesma busca e volta ao ponto da lista em que estava." },
+          { id: "q04", title: "Quem vai escolher o que entra no cardápio de entrega? Você quer guardar uma lista de itens que só vende no balcão?", hint: "O café servido em copo fica fora do cardápio dos clientes. Diga se você quer anotá-lo, junto com outros itens de balcão, na área do site que só você usa." },
+          { id: "q05", title: "Se você ainda não tiver uma foto boa de um produto, o cliente pode vê-lo no cardápio?", choices: ["Sim, com nome, descrição e preço", "Quero mostrar o produto só depois de colocar a foto", "Quero decidir para cada produto"] },
+          { id: "catalogo", title: "Quais produtos você quer oferecer primeiro? Como gostaria de agrupá-los?", hint: "Exemplos de grupos: marmitas prontas, lanches e doces. Se puder, cite uma marmita pronta, um item vendido por peso e um com desconto na compra de várias unidades. Para cada exemplo, diga o preço, os tamanhos ou sabores e se já tem foto e dados nutricionais." }
+        ]
+      },
+      {
+        title: "Preços, porções e escolhas",
+        intro: "Nas marmitas prontas, você informa o que vem e o preço. Nas que o cliente monta, ele vê uma previsão de preço e você confirma o valor pelo WhatsApp.",
+        questions: [
+          { id: "q06", title: "Se dez brigadeiros dão desconto, cinco de chocolate e cinco de coco também devem valer como dez?", choices: ["O desconto só vale quando sabor e tamanho são iguais", "Pode misturar sabores, desde que todos tenham o mesmo tamanho", "Quero decidir para cada produto quais sabores e tamanhos podem somar"], hint: "Contam os itens comprados separadamente. Brigadeiros que já fazem parte de uma oferta em conjunto ficam fora da soma. Se puder, dê um exemplo com sabores ou tamanhos diferentes e diga quanto cobraria." },
+          { id: "q07", title: "Quando você mudar o preço do quilo do bolo, como prefere conferir quanto cada fatia vai custar?", choices: ["Quero ver todos os novos preços juntos antes de mostrá-los aos clientes", "Quero conferir e aprovar o preço de cada fatia separadamente", "Quero ver um exemplo antes de escolher"], hint: "O site calcula o preço das porções que você já vende. Se o quilo custa R$ 50, a fatia de 100 g custa R$ 5." },
+          { id: "q08", title: "Como seria mais fácil para você colocar no cardápio marmitas de 300 g e 450 g?", hint: "Você pode me dizer se prefere colocar os dois tamanhos no mesmo produto ou copiar a marmita que já preencheu e alterar a cópia. Se puder, dê o peso total, os ingredientes e o preço de cada uma." },
+          { id: "q09", title: "Quando alguém montar a própria marmita, o que poderá escolher?", multiple: true, choices: ["O peso da marmita inteira", "A carne, o frango ou outra proteína", "Os acompanhamentos, como arroz ou feijão", "Extras, como uma porção adicional paga"], hint: "Dê um exemplo do que a pessoa precisa escolher. Pode pegar só arroz? Pode pegar arroz e feijão? Pode pedir duas porções de uma mesma opção? Diga se alguma escolha custa a mais." },
+          { id: "personalizadas-disponibilidade", title: "Quando o cliente pode ver a opção de montar a própria marmita?", choices: ["Sempre que eu ligar essa opção no site", "Apenas nos dias e horários que eu indicar", "Quero manter essa opção escondida até testar"], hint: "Você poderá suspender só as marmitas que o cliente monta. As prontas continuam no cardápio. Diga em que situações usaria isso." },
+          { id: "q10", title: "Se o preço final da marmita montada mudar, como você quer anotar o valor combinado?", hint: "Por exemplo, o site mostra R$ 20 como previsão, mas você combina R$ 22 no WhatsApp. Como gostaria de registrar os R$ 22 e ainda conseguir consultar o que o cliente tinha escolhido no começo?" },
+          { id: "q11", title: "Quando o cliente abre um produto, como deve ver as informações de calorias, proteínas e outros nutrientes?", choices: ["Mostrar um botão “Ver tabela nutricional” para abrir a tabela", "Mostrar a tabela inteira assim que o cliente abrir o produto", "Mostrar um resumo e um botão para abrir a tabela inteira"], hint: "Usaremos os valores que você informar para cada tamanho. Se você só tiver os dados da marmita de 300 g, eles aparecem apenas para esse tamanho." },
+          { id: "revisao-nutricao", title: "Quem vai informar e conferir os ingredientes e os dados nutricionais dos seus produtos?", hint: "Diga também quem confere avisos sobre ingredientes que podem causar alergia, como leite ou amendoim. Conte quais informações você já tem e quais ainda precisa conseguir." },
+          { id: "combos", title: "Quais produtos você gostaria de oferecer juntos por um único preço?", hint: "Por exemplo, uma marmita e um suco por R$ 24. Diga o que vem junto, quanto custa, se o cliente pode escolher os sabores e o que pode trocar." }
+        ]
+      },
+      {
+        title: "Como você atende e atualiza o cardápio",
+        intro: "Você continuará conversando com o cliente pelo WhatsApp. No site, terá uma área só para você, chamada painel, para mudar o cardápio e anotar o que aconteceu com os pedidos.",
+        questions: [
+          { id: "q12", title: "Se acabar a marmita de frango de 300 g, como ela deve aparecer na lista normal do cardápio?", choices: ["Continuar na lista com o aviso “Esgotado”", "Sair da lista de opções que o cliente pode escolher", "Quero decidir isso para cada produto"], hint: "Você poderá avisar que um item acabou mesmo enquanto estiver preparando outras mudanças no cardápio. Se alguém já colocou a marmita na sacola, deve receber um aviso antes de abrir o WhatsApp. Como você gostaria de sugerir a troca?" },
+          { id: "mudanca-preco", title: "Se o preço mudar depois que o cliente colocou um produto na sacola, o que ele deve ver?", choices: ["O preço antigo ao lado do novo", "O novo preço com um aviso de que mudou"], hint: "A pessoa confere o novo valor antes de seguir. Diga se você precisa de um jeito de trocar só o preço, mesmo que tenha outras mudanças ainda em preparação." },
+          { id: "horarios", title: "Em quais dias e horários você atende?", hint: "Exemplo: segunda-feira, das 8h às 13h e das 15h30 às 20h30. Inclua os intervalos e informe os dias em que fecha. Quem enviar a lista pelo WhatsApp fora do horário verá quando você volta a atender." },
+          { id: "q13", title: "Se você precisar fechar por um feriado ou imprevisto, o que o cliente poderá fazer?", choices: ["Ver um aviso e ainda mandar a lista pelo WhatsApp", "Ver o cardápio, com o botão de enviar indisponível durante a pausa", "Quero decidir isso toda vez que fechar por um imprevisto"], hint: "Esta pergunta é sobre um fechamento fora do normal. Diga se você quer escrever um aviso e informar quando volta." },
+          { id: "q14", title: "Quando o cliente escolher muitos itens, o que você quer receber na mensagem do WhatsApp?", choices: ["A lista completa, com todas as escolhas e os preços", "Uma lista curta, com o número para encontrar todos os detalhes na minha área do site", "Quero ver um exemplo de cada mensagem"], hint: "Imagine duas marmitas prontas e dez montadas pelo cliente. Quais informações você precisa ver de imediato?" },
+          { id: "q15", title: "Onde você quer ver as listas que o cliente montou e que podem ainda não ter chegado no seu WhatsApp?", choices: ["Na lista principal, com o aviso “Confira se a mensagem chegou”", "Em uma lista à parte para conferir no WhatsApp", "Quero ver um exemplo de cada lista"], hint: "O site guarda a lista quando o cliente segue para o WhatsApp. A mensagem só chega se ele tocar em enviar. Se ele tentar de novo com os mesmos itens, a proposta é continuar usando o mesmo número para identificar aquela lista." },
+          { id: "q16", title: "Se o cliente pedir três marmitas e você só puder entregar duas, como quer anotar o que ficou combinado?", hint: "Você poderá conferir o que ele pediu no início e o que foi combinado depois, com o mesmo número para achar o pedido. Conte se costuma oferecer uma troca, riscar o item que faltou ou fazer de outro jeito." },
+          { id: "rotina", title: "Em que momentos você quer anotar no site o que aconteceu com o pedido?", choices: ["Desde a hora em que começo a conferir até confirmar, entregar ou cancelar", "Quando eu aceitar o pedido e depois quando entregar ou cancelar", "Só quando o pedido for entregue ou cancelado"], hint: "Diga também o que você gostaria de ver no topo da lista ao entrar na sua área do site. Por exemplo, os pedidos que ainda precisam de uma resposta sua." },
+          { id: "q17", title: "O que você quer anotar sobre uma venda feita no balcão ou numa conversa que começou direto no WhatsApp?", multiple: true, choices: ["Se a venda foi no balcão, pelo WhatsApp ou veio do site", "O que a pessoa comprou e quantas unidades", "O total e o desconto combinado", "Como a pessoa pagou, por exemplo Pix ou cartão", "O número que identifica o pedido, se ele tiver começado no site"], hint: "Como você gostaria de reconhecer uma venda que já anotou para evitar contar duas vezes? Se quiser, você poderá anotar a forma de pagamento depois de combinar com a pessoa." },
+          { id: "q18", title: "Se você trocar de celular ou esquecer como acessar sua área do site, quem pode ajudar?", hint: "Se outra pessoa também precisar atualizar produtos ou horários, diga quem é e o que ela precisa fazer. Deixe senhas e códigos de acesso fora da resposta." },
+          { id: "restaurar-aparencia", title: "Se você mudar a aparência do cardápio e quiser voltar ao visual anterior, o que gostaria de conferir antes?", hint: "Por exemplo, rever as cores, a ordem da lista e o que aparece no começo antes de mostrar o visual antigo aos clientes. Voltar ao visual anterior preserva os avisos atuais de produtos esgotados." },
+          { id: "painel", title: "O que você precisa conseguir fazer sozinha desde o primeiro dia?", multiple: true, choices: ["Mudar um preço", "Avisar que um produto ou sabor acabou e colocá-lo de volta quando chegar", "Pausar as marmitas que o cliente monta", "Trocar as fotos, o que aparece no começo ou a ordem dos grupos de produtos", "Mudar cores, tipos de letra ou o jeito de mostrar os produtos", "Ver como ficou uma mudança antes de mostrar aos clientes"], hint: "Se alguma coisa puder esperar para uma próxima fase, conte no campo abaixo." },
+          { id: "indicadores", title: "Ao abrir sua área do site, que informações você gostaria de ter à mão?", multiple: true, choices: ["Pedidos que ainda precisam de resposta", "Pedidos que já aceitei", "Vendas concluídas na semana ou no mês", "Produtos que mais vendi", "Quantidade de vendas no balcão, pelo WhatsApp ou iniciadas no site", "Quanto os clientes gastam em média por venda", "Botão para baixar a lista de vendas"], hint: "Abrir o WhatsApp é diferente de fazer uma compra. Se você também quiser ver quantas vezes as pessoas abriram o WhatsApp pelo cardápio, conte como usaria esse número." },
+          { id: "contatos", title: "Que informações da loja você quer mostrar no cardápio?", hint: "Se já estiverem definidos, informe o número de WhatsApp da loja, o nome do perfil no Instagram, o endereço e como você combina entrega ou retirada." }
+        ]
+      }
+    ];
+
+    const form = document.getElementById("questionnaire");
+    const container = document.getElementById("sections");
+    const draftStatus = document.getElementById("draft-status");
+    const progress = document.getElementById("progress");
+    const progressText = document.getElementById("progress-text");
+    const exportStatus = document.getElementById("export-status");
+    const draftKey = "lais-fit-ja-questionario-v1";
+    const fields = new Map();
+    const undecided = "Ainda não decidi";
+    const otherAnswer = "Outra resposta";
+
+    function create(tag, text) {
+      const element = document.createElement(tag);
+      if (text !== undefined) element.textContent = text;
+      return element;
+    }
+
+    function renderQuestion(question, number) {
+      const group = create("fieldset");
+      group.append(create("legend", number + ". " + question.title));
+      if (question.hint || question.multiple) {
+        const hint = create("p", [question.multiple ? "Você pode marcar mais de uma opção." : "", question.hint].filter(Boolean).join(" "));
+        hint.className = "hint";
+        hint.id = question.id + "-hint";
+        group.setAttribute("aria-describedby", hint.id);
+        group.append(hint);
+      }
+      const inputs = [];
+      if (question.choices) {
+        const choices = [...question.choices, undecided, otherAnswer];
+        choices.forEach(choice => {
+          const label = create("label");
+          label.className = "choice";
+          const input = create("input");
+          input.type = question.multiple ? "checkbox" : "radio";
+          input.name = question.id;
+          input.value = choice;
+          if (question.multiple) {
+            input.addEventListener("change", () => {
+              if (!input.checked) return;
+              for (const option of inputs) {
+                if (option !== input && (choice === undecided || option.value === undecided)) {
+                  option.checked = false;
+                }
+              }
+            });
+          }
+          label.append(input, create("span", choice));
+          group.append(label);
+          inputs.push(input);
+        });
+      }
+      const details = create("textarea");
+      details.id = question.id + "-details";
+      details.rows = 3;
+      const label = create("label", question.choices ? "Se quiser, explique ou dê um exemplo" : "Sua resposta");
+      label.className = "details-label";
+      label.htmlFor = details.id;
+      group.append(label, details);
+      fields.set(question.id, { inputs, details, label });
+      return group;
+    }
+
+    function render() {
+      let number = 0;
+      for (const section of sections) {
+        const block = create("section");
+        const heading = create("h2", section.title);
+        heading.id = "section-" + (number + 1);
+        block.setAttribute("aria-labelledby", heading.id);
+        block.append(heading, create("p", section.intro));
+        for (const question of section.questions) {
+          block.append(renderQuestion(question, ++number));
+        }
+        container.append(block);
+      }
+    }
+
+    function readResponses() {
+      const answers = {};
+      for (const [id, field] of fields) {
+        const selected = field.inputs.filter(input => input.checked).map(input => input.value);
+        answers[id] = { selected, details: field.details.value.trim() };
+        const other = selected.includes(otherAnswer);
+        field.details.required = other;
+        field.details.setCustomValidity(other && !answers[id].details ? "Descreva sua preferência." : "");
+        field.label.textContent = other
+          ? "Descreva sua preferência (obrigatório para esta opção)"
+          : field.inputs.length ? "Se quiser, explique ou dê um exemplo" : "Sua resposta";
+      }
+      return answers;
+    }
+
+    function answered(answer) {
+      return answer.selected.includes(otherAnswer)
+        ? Boolean(answer.details)
+        : Boolean(answer.selected.length || answer.details);
+    }
+
+    function updateProgress(answers) {
+      const count = Object.values(answers).filter(answered).length;
+      progress.max = fields.size;
+      progress.value = count;
+      progressText.textContent = count + " de " + fields.size + " perguntas do planejamento respondidas";
+    }
+
+    function updateDraft() {
+      const answers = readResponses();
+      updateProgress(answers);
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(answers));
+        draftStatus.textContent = "Suas respostas ficaram guardadas neste navegador.";
+      } catch {
+        draftStatus.textContent = "Este navegador não guardou suas respostas. Use o botão de salvar antes de fechar a página.";
+      }
+      exportStatus.textContent = "";
+    }
+
+    function restoreDraft() {
+      try {
+        const raw = localStorage.getItem(draftKey);
+        if (!raw) return;
+        const stored = JSON.parse(raw);
+        for (const [id, field] of fields) {
+          const value = stored?.[id];
+          if (!value) continue;
+          const previous = Array.isArray(value.selected) ? value.selected : value.selected ? [value.selected] : [];
+          for (const input of field.inputs) input.checked = previous.includes(input.value);
+          const previousChoices = previous.filter(choice => !field.inputs.some(input => input.value === choice));
+          field.details.value = [
+            typeof value.details === "string" ? value.details : "",
+            ...previousChoices.map(choice => "Escolha do rascunho anterior: " + choice)
+          ].filter(Boolean).join("\n\n");
+        }
+        draftStatus.textContent = "Encontramos as respostas que você já tinha preenchido neste navegador.";
+      } catch {
+        draftStatus.textContent = "Você pode baixar suas respostas pelo botão no fim da página.";
+      }
+    }
+
+    function asQuote(value) {
+      return value.split(/\r?\n/).map(line => "> " + line).join("\n");
+    }
+
+    function makeMarkdown(answers) {
+      const lines = [
+        "# Respostas da Laís Fit Já",
+        "",
+        "Questionário funcional v2 · " + new Date().toLocaleDateString("pt-BR"),
+        ""
+      ];
+      let number = 0;
+      for (const section of sections) {
+        lines.push("## " + section.title, "");
+        for (const question of section.questions) {
+          const answer = answers[question.id];
+          lines.push("### " + (++number) + ". " + question.title, "");
+          if (!answered(answer)) lines.push("Sem resposta.", "");
+          if (answer.selected.length) {
+            lines.push(answer.selected.length === 1 ? "**Escolha**" : "**Escolhas**", "");
+            for (const choice of answer.selected) lines.push(asQuote(choice), "");
+          }
+          if (answer.details) lines.push("**Resposta ou complemento**", "", asQuote(answer.details), "");
+        }
+      }
+      return lines.join("\n") + "\n";
+    }
+
+    render();
+    restoreDraft();
+    updateProgress(readResponses());
+    form.addEventListener("input", event => {
+      // Checkboxes may clear a mutually exclusive option in their change handler.
+      if (event.target.type !== "checkbox") updateDraft();
+    });
+    form.addEventListener("change", updateDraft);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      const answers = readResponses();
+      const count = Object.values(answers).filter(answered).length;
+      if (count === 0) {
+        exportStatus.textContent = "Responda pelo menos uma pergunta antes de salvar.";
+        return;
+      }
+      const file = new Blob([makeMarkdown(answers)], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(file);
+      const link = create("a");
+      link.href = url;
+      link.download = "respostas-lais-fit-ja.md";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      exportStatus.textContent = "Download solicitado com " + count + " respostas. Confira o arquivo respostas-lais-fit-ja.md.";
+    });
+  </script>
+</body>
+</html>
