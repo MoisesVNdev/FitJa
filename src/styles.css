@@ -928,6 +928,11 @@ html:has(.preview-store) {
 .product-detail .choice-fieldset:first-of-type {
   margin-top: 16px;
 }
+.quantity-offers {
+  margin: -12px 0 16px;
+  padding-inline-start: 20px;
+  color: var(--muted);
+}
 .product-detail .option-row.selected {
   border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 9%, var(--surface));

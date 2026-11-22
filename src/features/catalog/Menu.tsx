@@ -410,6 +410,7 @@ export function Menu({
           catalog={c}
           economy={economy}
           initial={editLine}
+          cart={cart}
           onClose={() => setSelected(null)}
           onAdd={add}
         />

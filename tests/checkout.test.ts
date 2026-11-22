@@ -60,6 +60,17 @@ describe("revisão e encaminhamento", () => {
     expect(api.loadCatalog).toHaveBeenCalledTimes(1);
   });
 
+  it("mantém a faixa das linhas válidas durante a revisão de outro item indisponível", () => {
+    const { catalog } = fixture();
+    const first = { ...cart[0], productId: "brigadeiro", variantId: "v0", quantity: 7 };
+    const second = { ...first, key: "item-2", quantity: 3 };
+    const stale = { ...first, key: "item-3", variantId: "indisponivel", quantity: 1 };
+    const review = inspectSelection(catalog, [first, stale, second]);
+    expect(review.quote).toBeNull();
+    expect(review.lines[1].problem).toMatch(/opção/);
+    expect(review.lines.map((entry) => entry.quote?.total)).toEqual([1750, undefined, 750]);
+  });
+
   it("mantém referência, preferência, observações e lista completa no resumo e link curto", () => {
     const { order } = fixture();
     const message = orderMessage(order);

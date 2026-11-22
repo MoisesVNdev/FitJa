@@ -3,7 +3,7 @@ import type { CartLine, Catalog, Order, Quote, QuotedLine } from "../domain";
 // Adapter contract preserved by both the local demo and the future Worker API.
 export interface CheckoutApi {
   loadCatalog(): Promise<Catalog>;
-  // Reprice against the current catalog and return the original request on an exact retry.
+  // Reprice the entire cart together against the current catalog and return the original request on an exact retry.
   submitOrder(
     cart: CartLine[],
     notes: string,

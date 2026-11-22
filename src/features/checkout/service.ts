@@ -20,6 +20,18 @@ export function inspectSelection(catalog: Catalog, cart: CartLine[]): CheckoutRe
         return { key: line.key, quote: null, problem: (lineError as Error).message };
       }
     });
+    const validLines = cart.filter((_, index) => !lines[index].problem);
+    if (validLines.length > 0 && validLines.length < cart.length) {
+      try {
+        const validQuote = quoteCart(catalog, validLines);
+        const byKey = new Map(validQuote.lines.map((line) => [line.key, line]));
+        for (const line of lines) {
+          if (!line.problem) line.quote = byKey.get(line.key) ?? line.quote;
+        }
+      } catch {
+        // Keep line-level guidance when the remaining selection exceeds a cart limit.
+      }
+    }
     return {
       catalog,
       lines,

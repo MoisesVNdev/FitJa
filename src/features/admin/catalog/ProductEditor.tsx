@@ -10,6 +10,9 @@ import {
 import {
   hasNutritionValues,
   money,
+  quantityTierDrops,
+  quantityTierError,
+  supportsQuantityTiers,
   variantBasePrice,
   type Catalog,
   type ChoiceGroup,
@@ -17,6 +20,7 @@ import {
   type Nutrition,
   type Option,
   type Product,
+  type QuantityTier,
   type Variant,
 } from "../../../../shared/domain";
 import { Modal, Notice } from "../../../shared/ui";
@@ -67,6 +71,82 @@ function Price({
     </label>
   );
 }
+
+function QuantityTiers({
+  product,
+  variant,
+  onChange,
+}: {
+  product: Product;
+  variant: Variant;
+  onChange: (tiers: QuantityTier[]) => void;
+}) {
+  const tiers = variant.quantityTiers ?? [];
+  const error = quantityTierError(product, variant);
+  const errorId = useId();
+  const last = tiers.at(-1);
+  const mayAdd = supportsQuantityTiers(product) && tiers.length < 10 && (last?.minQuantity ?? 1) < 99;
+  function update(index: number, patch: Partial<QuantityTier>) {
+    onChange(tiers.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
+  }
+
+  return (
+    <fieldset
+      className="tier-editor"
+      aria-invalid={!!error || undefined}
+      aria-describedby={error ? errorId : undefined}
+      tabIndex={error ? -1 : undefined}
+    >
+      <legend>Faixas de quantidade</legend>
+      {tiers.map((tier, index) => (
+        <div className="tier-fields" key={index}>
+          <label className="field">
+            A partir de (unidades)
+            <input
+              type="number"
+              min={2}
+              max={99}
+              step={1}
+              value={tier.minQuantity || ""}
+              onChange={(event) => update(index, { minQuantity: event.target.valueAsNumber || 0 })}
+            />
+          </label>
+          <Price
+            label="Preço por unidade (R$)"
+            value={tier.unitPrice}
+            onChange={(unitPrice) => update(index, { unitPrice })}
+          />
+        </div>
+      ))}
+      {error && <p className="field-error" id={errorId} role="status">{error}</p>}
+      {!error && quantityTierDrops(variant).map((drop) => (
+        <p className="tier-warning small" key={drop.quantity} role="status">
+          Confira esta faixa. De {drop.previousQuantity} para {drop.quantity} unidades,
+          o total cai de {money(drop.previousTotal)} para {money(drop.total)}.
+        </p>
+      ))}
+      <div className="tier-actions">
+        <button
+          type="button"
+          className="text-button"
+          disabled={!mayAdd}
+          onClick={() => onChange([...tiers, {
+            minQuantity: (last?.minQuantity || 1) + 1,
+            unitPrice: 0,
+          }])}
+        >
+          <Plus size={15} aria-hidden="true" /> Faixa
+        </button>
+        {!!tiers.length && (
+          <button type="button" className="text-button danger" onClick={() => onChange(tiers.slice(0, -1))}>
+            Remover última faixa
+          </button>
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
 export default function ProductEditor({
   product,
   catalog: c,
@@ -141,7 +221,7 @@ export default function ProductEditor({
       p.variants.some(
         (v) => !v.name.trim() || (byWeight
           ? variantBasePrice(p, v) === null
-          : v.price < 0 || !Number.isSafeInteger(v.price)),
+          : v.price < 0 || !Number.isSafeInteger(v.price)) || !!quantityTierError(p, v),
       ) ||
       p.groups.some((group) => group.options.some((option) =>
         option.price < 0 || !Number.isSafeInteger(option.price),
@@ -405,6 +485,15 @@ export default function ProductEditor({
                 >
                   <Trash2 size={16} />
                 </button>
+                {(supportsQuantityTiers(p) || !!v.quantityTiers?.length) && (
+                  <QuantityTiers
+                    product={p}
+                    variant={v}
+                    onChange={(quantityTiers) => updateVariant(v.id, {
+                      quantityTiers: quantityTiers.length ? quantityTiers : undefined,
+                    })}
+                  />
+                )}
                 <button
                   className="text-button nutrition-edit-button"
                   onClick={() => setNutrition(nutrition === v.id ? "" : v.id)}

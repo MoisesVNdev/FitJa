@@ -256,3 +256,21 @@ O preço por quilo em centavos (`Product.pricePerKg`) ativa o modelo de peso. Ca
 No Chrome local, o editor mostrou 100 g por R$ 5 e 200 g por R$ 10 a partir de R$ 50/kg. O teste salvou e publicou o produto fictício no perfil de demonstração, trocou a porção na ficha e conferiu 200 g por R$ 10 na sacola. [Tabela no editor](../../artifacts/etapa-06-regras-comerciais/peso-editor-1366.png) · [Ficha a 390 px](../../artifacts/etapa-06-regras-comerciais/peso-ficha-390.png)
 
 Até a decisão sobre arredondamento, o catálogo e o checkout exigem valores exatos em centavos inteiros. A decisão ficou no [planejamento funcional](planejamento-funcional-lais-fit-ja-v0.1.md#preço-proporcional-por-peso).
+
+### Faixas por quantidade
+
+`Variant.quantityTiers` é opcional e registra o mínimo de unidades e o preço unitário em centavos. A faixa mais alta atingida vale para todas as unidades avulsas do mesmo produto e da mesma variante. O editor exige preços decrescentes e limites crescentes. Se uma unidade adicional reduzir o total, o editor mostra as quantidades e os dois totais à Laís. A regra é aplicada a avulsos de preço fixo sem grupos de adicionais e preserva o preço dos combos. Sabores, tamanhos e porções com identificadores distintos têm contagens próprias.
+
+A ficha considera as demais linhas elegíveis durante a adição ou edição. A sacola e o painel de pedidos usam a cotação compartilhada e mostram o desconto por linha. O cliente continua enviando identificadores, quantidades e escolhas. O servidor legado refaz a cotação do carrinho inteiro e compara a assinatura vigente. Os catálogos salvos mantêm seus dados e podem ativar faixas no painel. O catálogo inicial da demonstração inclui as faixas de brigadeiro e coxinha na opção avulsa. Os pacotes anteriores continuam selecionáveis com os mesmos identificadores e preços.
+
+| Cenário | Resultado |
+| --- | --- |
+| Brigadeiros | 9 custaram R$ 27,00, 10 custaram R$ 25,00 e 11 custaram R$ 27,50. Adicionar 7 e 3 separadamente acionou o desconto nas duas linhas. Reduzir a segunda para 2 retirou a faixa. O editor sinalizou a queda de total de 9 para 10. [Aviso no editor](../../artifacts/etapa-06-regras-comerciais/faixas-aviso-1366.png) · [Sacola](../../artifacts/etapa-06-regras-comerciais/faixas-sacola-390.png) |
+| Coxinhas | 1 por R$ 9,50, 2 por R$ 18,00, 4 por R$ 36,00, 5 por R$ 42,00 e 6 por R$ 50,40. [Ficha](../../artifacts/etapa-06-regras-comerciais/faixas-coxinha-390.png) |
+| Sabores, tamanhos e combos | O teste de domínio verificou que essas quantidades não contam para a faixa do avulso escolhido. Um item inválido deixa o total em revisão e preserva a faixa das linhas válidas. |
+
+O aceite usou dados fictícios no Chrome local a 1366 × 768 px no painel e 390 × 844 px na loja. A validação com Supabase em execução permanece para homologação.
+
+### Combos e montagem personalizada
+
+Os combos fixos e os grupos de escolhas existentes continuam disponíveis. A montagem experimental aguarda um exemplo aprovado pela Laís com tamanhos, escolhas obrigatórias e opcionais, limites e preço. O aceite da pausa seletiva, da edição e duplicação da montagem e dos subtotais pronto e estimado segue pendente.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Leaf, ShoppingBag, ZoomIn, ZoomOut } from "lucide-react";
-import { componentAvailable, hasNutritionValues, money, quoteCart, startingOffer, variantBasePrice, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
+import { componentAvailable, hasNutritionValues, money, portionLabel, quoteCart, startingOffer, variantBasePrice, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
 import { Modal, Quantity } from "../../shared/ui";
 
 type PhotoDimensions = { width: number; height: number };
@@ -154,6 +154,7 @@ export function ProductDialog({
   catalog: c,
   economy,
   initial,
+  cart,
   onClose,
   onAdd,
 }: {
@@ -161,6 +162,7 @@ export function ProductDialog({
   catalog: Catalog;
   economy: boolean;
   initial?: CartLine;
+  cart: CartLine[];
   onClose: () => void;
   onAdd: (line: CartLine) => void;
 }) {
@@ -182,9 +184,17 @@ export function ProductDialog({
       selections,
     };
   let price: number | null = null,
+    discount = 0,
     problem = "";
   try {
-    price = quoteCart(c, [line]).total;
+    const peers = variant?.quantityTiers?.length
+      ? cart.filter((item) =>
+        item.key !== line.key && item.productId === line.productId && item.variantId === variantId,
+      )
+      : [];
+    const quote = quoteCart(c, [line, ...peers]).lines[0];
+    price = quote.total;
+    discount = quote.quantityDiscount ?? 0;
   } catch (e) {
     problem = (e as Error).message;
   }
@@ -232,6 +242,7 @@ export function ProductDialog({
               {variant && (
                 <p className="detail-price" role="status">
                   <span>{variantLabel(p, variant)}</span>
+                  {price !== null && quantity > 1 && <span>Total de {portionLabel(quantity)}</span>}
                   <strong>{price === null ? "Preço base " : ""}{priceLabel(price ?? variantBasePrice(p, variant))}</strong>
                 </p>
               )}
@@ -270,6 +281,15 @@ export function ProductDialog({
               </label>
             ))}
           </fieldset>
+          {!!variant?.quantityTiers?.length && (
+            <ul className="quantity-offers small">
+              {variant.quantityTiers.map((tier) => (
+                <li key={tier.minQuantity}>
+                  A partir de {tier.minQuantity} unidades da mesma opção: {money(tier.unitPrice)} por unidade
+                </li>
+              ))}
+            </ul>
+          )}
           {p.groups.map((g) => {
             const count = selections
               .filter((s) => s.groupId === g.id)
@@ -380,6 +400,9 @@ export function ProductDialog({
             <strong>{price !== null ? money(price) : ""}</strong>
           </button>
         </div>
+        {discount > 0 && (
+          <p className="small" role="status">Desconto por quantidade nesta linha: {money(discount)}.</p>
+        )}
         {problem && (
           <p className="small muted" role="status">
             {problem}

@@ -109,6 +109,9 @@ export function CartDialog({
                       {details.map((d, i) => (
                         <small key={i}>{d}</small>
                       ))}
+                      {!!q?.quantityDiscount && (
+                        <small>Desconto por quantidade: {money(q.quantityDiscount)}</small>
+                      )}
                       {item.problem && <Notice error>{item.problem} Edite ou remova este item.</Notice>}
                       {changes[line.key] && !item.problem && <Notice>{changes[line.key]}</Notice>}
                       <button

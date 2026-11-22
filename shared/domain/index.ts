@@ -15,11 +15,16 @@ export function hasNutritionValues(nutrition: Nutrition | undefined) {
       key !== "serving" && typeof value === "string" && value.trim().length > 0,
     );
 }
+export type QuantityTier = {
+  minQuantity: number;
+  unitPrice: number;
+};
 export type Variant = {
   id: string;
   name: string;
   price: number;
   weightGrams?: number;
+  quantityTiers?: QuantityTier[];
   nutrition?: Nutrition;
 };
 export type Component = {
@@ -100,6 +105,7 @@ export type QuotedLine = CartLine & {
   variant: string;
   unitPrice: number;
   total: number;
+  quantityDiscount?: number;
   details: string[];
   components: (Component & { name: string })[];
 };
@@ -149,6 +155,41 @@ export function variantLabel(product: Product, variant: Variant) {
   return product.pricePerKg === undefined
     ? variant.name
     : `${variant.name} · ${variant.weightGrams} g`;
+}
+
+export function supportsQuantityTiers(product: Product) {
+  return product.kind === "product" && product.pricePerKg === undefined && product.groups?.length === 0;
+}
+
+export function quantityTierError(product: Product, variant: Variant) {
+  const tiers = variant.quantityTiers;
+  if (tiers === undefined) return null;
+  if (!Array.isArray(tiers)) return "Faixas de quantidade inválidas.";
+  if (tiers.length === 0) return null;
+  if (!supportsQuantityTiers(product)) return "Use faixas somente em avulsos com preço fixo e sem adicionais.";
+  if (tiers.length > 10) return "Cadastre até 10 faixas por opção.";
+  let previousQuantity = 1;
+  let previousPrice = variant.price;
+  for (const tier of tiers) {
+    if (!tier || !integer(tier.minQuantity, previousQuantity + 1, 99)) {
+      return "Informe quantidades inteiras de 2 a 99 em ordem crescente.";
+    }
+    if (!integer(tier.unitPrice, 1, previousPrice - 1)) {
+      return "Informe um preço unitário positivo e menor que o da faixa anterior ou do preço base.";
+    }
+    previousQuantity = tier.minQuantity;
+    previousPrice = tier.unitPrice;
+  }
+  return null;
+}
+
+export function quantityTierDrops(variant: Variant) {
+  return (variant.quantityTiers ?? []).flatMap((tier, index, tiers) => {
+    const previousQuantity = tier.minQuantity - 1;
+    const previousTotal = previousQuantity * (tiers[index - 1]?.unitPrice ?? variant.price);
+    const total = tier.minQuantity * tier.unitPrice;
+    return total < previousTotal ? [{ previousQuantity, previousTotal, quantity: tier.minQuantity, total }] : [];
+  });
 }
 
 export function validPhone(phone: string) {
@@ -328,6 +369,8 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
           `Confira o peso e o preço de ${v.name} em ${p.name}. A porção deve custar um valor positivo em centavos inteiros.`,
         );
       }
+      const tierError = quantityTierError(p, v);
+      assert(!tierError, `${p.name} · ${v.name}: ${tierError}`);
       if (v.nutrition) {
         for (const [k, n] of Object.entries(v.nutrition))
           assert(
@@ -484,6 +527,13 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
     Array.isArray(cart) && cart.length > 0 && cart.length <= 50,
     "Selecione entre 1 e 50 itens diferentes.",
   );
+  const quantities = new Map<string, number>();
+  const tierKey = (line: CartLine) => JSON.stringify([line.productId, line.variantId]);
+  for (const line of cart) {
+    assert(integer(line.quantity, 1, 99), "Escolha uma opção e quantidade válidas.");
+    const key = tierKey(line);
+    quantities.set(key, (quantities.get(key) ?? 0) + line.quantity);
+  }
   const keys = new Set<string>();
   const lines = cart.map((line) => {
     assert(
@@ -500,15 +550,24 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
     );
     const v = p.variants.find((x) => x.id === line.variantId);
     assert(
-      v && integer(line.quantity, 1, 99),
+      v,
       "Escolha uma opção e quantidade válidas.",
     );
     assert(
       Array.isArray(line.selections) && line.selections.length <= 100,
       "Escolhas inválidas.",
     );
-    let unitPrice = variantBasePrice(p, v);
-    assert(unitPrice !== null, `O preço por peso de ${p.name} está indisponível.`);
+    const basePrice = variantBasePrice(p, v);
+    assert(basePrice !== null, `O preço por peso de ${p.name} está indisponível.`);
+    const tiers = v.quantityTiers ?? [];
+    const tierError = quantityTierError(p, v);
+    assert(!tierError, tierError ?? "");
+    const groupedQuantity = quantities.get(tierKey(line)) ?? line.quantity;
+    const tier = tiers.reduce<QuantityTier | undefined>(
+      (active, candidate) => candidate.minQuantity <= groupedQuantity ? candidate : active,
+      undefined,
+    );
+    let unitPrice = tier?.unitPrice ?? basePrice;
     const components = p.components.map((x) => ({
       ...x,
       name: c.products.find((y) => y.id === x.productId)!.name,
@@ -570,6 +629,7 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
       variant: variantLabel(p, v),
       unitPrice,
       total: unitPrice * line.quantity,
+      ...(tier ? { quantityDiscount: (basePrice - tier.unitPrice) * line.quantity } : {}),
       details,
       components,
     };

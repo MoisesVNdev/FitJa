@@ -3,6 +3,7 @@ import { initialCatalog } from "../src/data";
 import {
   available,
   contrast,
+  quantityTierDrops,
   quoteCart,
   startingOffer,
   validateCatalog,
@@ -56,6 +57,78 @@ describe("preço por peso", () => {
     expect(() => validateCatalog(c)).toThrow("centavos inteiros");
     expect(() => quoteCart(c, [line()])).toThrow("indisponível");
     expect(startingOffer(c, product)?.price).toBe(1011);
+  });
+});
+
+describe("faixas por quantidade", () => {
+  it.each([
+    ["brigadeiro", 9, 2700],
+    ["brigadeiro", 10, 2500],
+    ["brigadeiro", 11, 2750],
+    ["coxinha", 1, 950],
+    ["coxinha", 2, 1800],
+    ["coxinha", 4, 3600],
+    ["coxinha", 5, 4200],
+    ["coxinha", 6, 5040],
+  ])("cota %s com %i unidades", (productId, quantity, total) => {
+    expect(quoteCart(catalog(), [line(productId, "v0", quantity)]).total).toBe(total);
+  });
+
+  it("agrupa avulsos iguais e perde a faixa ao reduzir uma linha", () => {
+    const c = catalog();
+    const first = line("brigadeiro", "v0", 7);
+    const second = { ...line("brigadeiro", "v0", 3), key: "separada" };
+    const discounted = quoteCart(c, [first, second]);
+    expect(discounted.total).toBe(2500);
+    expect(discounted.lines.map((entry) => entry.quantityDiscount)).toEqual([350, 150]);
+    const updated = quoteCart(c, [first, { ...second, quantity: 2 }]);
+    expect(updated.total).toBe(2700);
+    expect(updated.lines.every((entry) => entry.quantityDiscount === undefined)).toBe(true);
+    expect(updated.signature).not.toBe(discounted.signature);
+  });
+
+  it("separa sabores, tamanhos e componentes de um combo fixo", () => {
+    const c = catalog();
+    const brigadeiro = c.products.find((p) => p.id === "brigadeiro")!;
+    const original = brigadeiro.variants[0];
+    brigadeiro.variants.push(
+      { ...original, id: "morango", name: "Morango · 20 g" },
+      { ...original, id: "maior", name: "Tradicional · 40 g", price: 500 },
+    );
+    const { fixed } = combos(c);
+    fixed.components = [{ productId: brigadeiro.id, variantId: original.id, quantity: 3 }];
+    validateCatalog(c);
+    const priced = quoteCart(c, [
+      line(brigadeiro.id, original.id, 9),
+      { ...line(brigadeiro.id, "morango", 1), key: "sabor" },
+      { ...line(brigadeiro.id, "maior", 1), key: "tamanho" },
+      { ...line(fixed.id, "base", 2), key: "combo" },
+    ]);
+    expect(priced.lines.map((entry) => entry.total)).toEqual([2700, 300, 500, 2800]);
+    expect(priced.lines.every((entry) => entry.quantityDiscount === undefined)).toBe(true);
+  });
+
+  it("sinaliza total menor na transição e valida somente faixas elegíveis", () => {
+    const c = catalog();
+    const brigadeiro = c.products.find((p) => p.id === "brigadeiro")!;
+    const variant = brigadeiro.variants[0];
+    expect(quantityTierDrops(variant)).toEqual([
+      { previousQuantity: 9, previousTotal: 2700, quantity: 10, total: 2500 },
+    ]);
+    variant.quantityTiers = [{ minQuantity: 10, unitPrice: 350 }];
+    expect(() => validateCatalog(c)).toThrow("menor que");
+    variant.quantityTiers = [{ minQuantity: 10, unitPrice: 250 }];
+    brigadeiro.kind = "fixed";
+    expect(() => validateCatalog(c)).toThrow("somente em avulsos");
+  });
+
+  it("preserva as porções antigas e os catálogos sem faixas", () => {
+    const c = catalog();
+    const coxinha = c.products.find((p) => p.id === "coxinha")!;
+    expect(quoteCart(c, [line(coxinha.id, "v1", 2)]).total).toBe(3600);
+    delete coxinha.variants[0].quantityTiers;
+    validateCatalog(c);
+    expect(quoteCart(c, [line(coxinha.id, "v0", 5)]).total).toBe(4750);
   });
 });
 

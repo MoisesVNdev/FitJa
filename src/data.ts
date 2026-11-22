@@ -1,11 +1,15 @@
 import type {
   Catalog,
   Product,
+  QuantityTier,
   Variant,
 } from "../shared/domain";
-type SeedVariant = [name: string, price: number, id?: string];
+type SeedVariant = [name: string, price: number, id?: string, quantityTiers?: QuantityTier[]];
 const variants = (values: SeedVariant[]): Variant[] =>
-  values.map(([name, price, id], i) => ({ id: id ?? `v${i}`, name, price }));
+  values.map(([name, price, id, quantityTiers], i) => ({
+    id: id ?? `v${i}`, name, price,
+    ...(quantityTiers ? { quantityTiers } : {}),
+  }));
 function product(
   id: string,
   name: string,
@@ -41,7 +45,10 @@ const products: Product[] = [
     "Massa de batata inglesa, frango desfiado e queijo muçarela.",
     "coxinha",
     [
-      ["1 unidade · 120 g", 950],
+      ["1 unidade · 120 g", 950, "v0", [
+        { minQuantity: 2, unitPrice: 900 },
+        { minQuantity: 5, unitPrice: 840 },
+      ]],
       ["2 unidades · 240 g", 1800],
       ["5 unidades · 600 g", 4200],
     ],
@@ -311,7 +318,7 @@ const products: Product[] = [
     "Um docinho para completar a sua pausa. Confirme os ingredientes com a loja.",
     "brigadeiro",
     [
-      ["1 unidade · 20 g", 300],
+      ["1 unidade · 20 g", 300, "v0", [{ minQuantity: 10, unitPrice: 250 }]],
       ["2 unidades", 600],
       ["10 unidades", 2500],
     ],

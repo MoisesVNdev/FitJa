@@ -236,6 +236,9 @@ function OrderEditor({
                   {item?.details.map((d, i) => (
                     <small key={i}>{d}</small>
                   ))}
+                  {!!item?.quantityDiscount && (
+                    <small>Desconto por quantidade: {money(item.quantityDiscount)}</small>
+                  )}
                 </div>
                 <strong>{item ? money(item.total) : "Revisar"}</strong>
                 <button
@@ -385,6 +388,7 @@ function OrderEditor({
           catalog={c}
           economy
           initial={line}
+          cart={cart}
           onClose={() => setSelected(null)}
           onAdd={(l) => {
             setCart((old) =>
