@@ -180,3 +180,25 @@ Os IDs de produto, categoria e variantes existentes foram preservados. As varian
 | Catálogo salvo | O catálogo anterior fictício manteve o nome Refeições, um produto renomeado, marmita arquivada fora da lista e escondidinho esgotado sem ação de inclusão. O publicado e o rascunho permaneceram idênticos no armazenamento. [Catálogo anterior](../../artifacts/etapa-02-catalogo-mobile/catalogo-anterior-esgotado-390.png) |
 
 A revisão com `web-design-guidelines` conferiu seleção programática dos filtros, texto de esgotamento, anúncio de resultados, foco ao limpar e área de toque de 44 px na ação dos cartões. `npm.cmd test` passou com 31 testes e `npm.cmd run build` passou.
+
+## Etapa 03 do roteiro móvel · Cartões, fotografias e ficha
+
+Os cartões da rota pública e da prévia passaram a usar miniatura proporcional em área reservada de 76 px, nome, porção, preço e uma ação. A ficha exibe composição, porção e preço junto ao título. A área das opções rola independentemente do rodapé com a ação de adicionar. Ao voltar de uma ficha aberta pelo cardápio, o grupo e a busca permanecem e o foco retorna ao botão que abriu a ficha, com a rolagem preservada.
+
+O preço inicial vem da variante mais barata e das escolhas obrigatórias disponíveis, cotadas pela mesma regra da sacola. Cartões esgotados mostram o estado e permitem consultar a ficha com a inclusão desabilitada.
+
+O recorte `sucos` mede 149 × 149 px em todas as versões existentes, inclusive nas que levam 640 e 1280 no nome. Coxinha mede 185 × 185 px e a marmita de frango mede 185 × 188 px. Os recortes são servidos como miniaturas com o arquivo WebP menor e alternativa JPEG. Para uploads, os cartões usam o derivado menor e a ficha usa até o derivado intermediário, conforme economia de dados. Oferecer ampliação depende dos pixels reais carregados no navegador e exige pelo menos 320 px em ambos os lados. A ficha mantém a hierarquia quando falta foto. Os caminhos existentes das imagens e a rotina de upload permanecem compatíveis. O editor pede os originais para fotografias maiores.
+
+`Variant.nutrition.confirmed` é opcional e fica no próprio JSON do catálogo. Valores já cadastrados continuam salvos e aguardam confirmação da porção e da composição no painel antes de voltar à ficha. É preciso informar a porção e pelo menos um valor. Alterar nome, composição, opção ou dados nutricionais requer nova confirmação. A tabela é exibida para o produto avulso sem adicionais selecionados. A função Supabase legada deve usar a validação de catálogo desta revisão quando for implantada para publicar a confirmação no backend.
+
+### Aceite da etapa
+
+**Aprovado localmente** no Chrome 158 a 390 × 844 px, em perfil descartável e pela prévia de produção do Vite.
+
+| Cenário | Resultado e evidências |
+| --- | --- |
+| Mesmo suco de 149 px | A ficha antiga exibia o recorte em uma área de 390 × 235 px. A nova ficha exibe em 88 × 88 px e retira o controle de ampliação. [Cartão antes](../../artifacts/etapa-03-cartoes-mobile/antes-cartao-suco-390.png) · [Cartão depois](../../artifacts/etapa-03-cartoes-mobile/depois-cartao-suco-390.png) · [Ficha antes](../../artifacts/etapa-03-cartoes-mobile/antes-ficha-suco-390.png) · [Ficha depois](../../artifacts/etapa-03-cartoes-mobile/depois-ficha-suco-390.png) |
+| Variante e retorno | Uva de 300 ml marcou R$ 8,00. Tangerina de 300 ml atualizou o resumo e o botão para R$ 9,00, valor conferido na sacola. A última opção alcançou a área visível acima do rodapé. Voltar preservou Bebidas, a posição de rolagem e o foco em Escolher. [Ficha com tangerina](../../artifacts/etapa-03-cartoes-mobile/tangerina-390.png) · [Sacola](../../artifacts/etapa-03-cartoes-mobile/sacola-tangerina-390.png) |
+| Foto ausente e foto maior | O produto sem foto preservou porção, preço e ação no cartão e na ficha. A imagem fictícia de 640 × 480 px permitiu ampliar e reduzir. No mesmo ensaio, a tabela apareceu para a variante fictícia confirmada e sumiu na variante sem confirmação. [Cartão sem foto](../../artifacts/etapa-03-cartoes-mobile/sem-foto-cartao-390.png) · [Ficha sem foto](../../artifacts/etapa-03-cartoes-mobile/sem-foto-390.png) · [Ampliação](../../artifacts/etapa-03-cartoes-mobile/foto-maior-ampliada-390.png) |
+
+A revisão com `web-design-guidelines` conferiu nome acessível da ação, dimensões e proporção das imagens, foco de retorno e acesso à última opção. `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. Para a próxima revisão com a Laís, solicitar as fotografias originais e confirmar as tabelas nutricionais que ela deseja publicar.

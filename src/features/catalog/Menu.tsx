@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, ShoppingBag, X } from "lucide-react";
-import { available, money, normalize, quoteCart, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
+import { money, normalize, quoteCart, startingOffer, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
 import { Modal } from "../../shared/ui";
 import { FeaturedProduct, ProductCard, ProductDialog } from "./ProductViews";
@@ -27,6 +27,7 @@ export function Menu({
   const [cartOpen, setCartOpen] = useState(false),
     [toast, setToast] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
+  const productReturn = useRef<{ opener: HTMLButtonElement; scrollY: number } | null>(null);
   const { cart, setCart } = useCart(preview, setToast);
   const [economy, setEconomy] = useState(() => {
       const saved = storage.get<boolean | null>("economy", null);
@@ -62,6 +63,17 @@ export function Menu({
     const timer = setTimeout(() => setToast(""), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
+  useEffect(() => {
+    if (selected || !productReturn.current) return;
+    const { opener, scrollY } = productReturn.current;
+    productReturn.current = null;
+    if (opener.isConnected) {
+      opener.focus({ preventScroll: true });
+      if (!preview && window.scrollY !== scrollY) {
+        window.scrollTo({ top: scrollY, behavior: "instant" });
+      }
+    }
+  }, [selected, preview]);
   if (error)
     return (
       <main className="error-page">
@@ -83,7 +95,7 @@ export function Menu({
   const c = catalog,
     count = cart.reduce((n, l) => n + l.quantity, 0),
     featured = c.products.find(
-      (p) => p.featured && available(c, p),
+      (p) => p.featured && startingOffer(c, p),
     );
   let total: number | null = null;
   try {
@@ -119,6 +131,10 @@ export function Menu({
     setSelected(p);
     setEditLine(line);
     if (!preview) void track("product_view", p.id);
+  }
+  function chooseFromCard(product: Product, opener: HTMLButtonElement) {
+    productReturn.current = { opener, scrollY: window.scrollY };
+    choose(product);
   }
   function add(line: CartLine) {
     setCart((old) =>
@@ -212,7 +228,7 @@ export function Menu({
       <main>
         <div className="menu-shell">
           {!term && featured && (
-            <FeaturedProduct product={featured} onSelect={choose} />
+            <FeaturedProduct product={featured} catalog={c} onSelect={chooseFromCard} />
           )}
           <div className="search-box">
             <Search size={20} aria-hidden="true" />
@@ -322,7 +338,7 @@ export function Menu({
                     product={p}
                     catalog={c}
                     categoryName={term ? cat.name : undefined}
-                    onSelect={choose}
+                    onSelect={chooseFromCard}
                     economy={economy}
                   />
                 ))}
@@ -424,7 +440,7 @@ export function Menu({
               <span>
                 <strong>Economia de dados</strong>
                 <small>
-                  Prefere fotos menores. Você ainda pode ampliar ao tocar.
+                  Prefere fotos menores. A ampliação aparece quando a foto tem resolução suficiente.
                 </small>
               </span>
               <input

@@ -1,5 +1,6 @@
 export type Nutrition = {
   serving: string;
+  confirmed?: boolean;
   energy?: string;
   carbs?: string;
   protein?: string;
@@ -8,6 +9,12 @@ export type Nutrition = {
   fiber?: string;
   sodium?: string;
 };
+export function hasNutritionValues(nutrition: Nutrition | undefined) {
+  return !!nutrition?.serving?.trim() &&
+    Object.entries(nutrition).some(([key, value]) =>
+      key !== "serving" && typeof value === "string" && value.trim().length > 0,
+    );
+}
 export type Variant = {
   id: string;
   name: string;
@@ -291,10 +298,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
         p.archived || v.price > 0,
         `Informe preços maiores que zero em ${p.name} antes de publicar.`,
       );
-      if (v.nutrition)
+      if (v.nutrition) {
         for (const [k, n] of Object.entries(v.nutrition))
           assert(
-            [
+            k === "confirmed" ? typeof n === "boolean" : [
               "serving",
               "energy",
               "carbs",
@@ -306,6 +313,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
             ].includes(k) && text(n, 100),
             "Informação nutricional inválida.",
           );
+        if (v.nutrition.confirmed) {
+          assert(hasNutritionValues(v.nutrition), "Informe a porção e os valores nutricionais conferidos.");
+        }
+      }
     }
     assert(
       Array.isArray(p.groups) &&
@@ -405,6 +416,36 @@ export function available(c: Catalog, p: Product) {
       return g.min === 0 || (g.repeat ? n > 0 : n >= g.min);
     })
   );
+}
+export function startingOffer(c: Catalog, p: Product) {
+  if (!p.variants.length || !available(c, p)) return null;
+  const variant = p.variants.reduce((cheapest, candidate) =>
+    candidate.price < cheapest.price ? candidate : cheapest,
+  );
+  const selections = p.groups
+    .filter((group) => group.min > 0)
+    .flatMap((group) => {
+      const options = group.options
+        .filter((option) => !option.component || componentAvailable(c, option.component))
+        .sort((a, b) => a.price - b.price);
+      return options.slice(0, group.repeat ? 1 : group.min).map((option) => ({
+        groupId: group.id,
+        optionId: option.id,
+        quantity: group.repeat ? group.min : 1,
+      }));
+    });
+  try {
+    const { total: price } = quoteCart(c, [{
+      key: "offer",
+      productId: p.id,
+      variantId: variant.id,
+      quantity: 1,
+      selections,
+    }]);
+    return { variant, price };
+  } catch {
+    return null;
+  }
 }
 export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
   assert(

@@ -4,6 +4,7 @@ import {
   available,
   contrast,
   quoteCart,
+  startingOffer,
   validateCatalog,
   validateOrderEdit,
   type Catalog,
@@ -131,6 +132,23 @@ describe("catálogo e preço canônico", () => {
   });
 });
 describe("combos e adicionais", () => {
+  it("anuncia o mínimo incluindo escolhas obrigatórias disponíveis", () => {
+    const c = catalog();
+    const { builder } = combos(c);
+    const [chicken, beef] = builder.groups[0].options;
+    chicken.price = 100;
+    beef.price = 300;
+    expect(startingOffer(c, builder)?.price).toBe(9500);
+
+    const chickenProduct = c.products.find((p) => p.id === chicken.component!.productId)!;
+    chickenProduct.available = false;
+    const availableOption = line("tapioca");
+    beef.component = { productId: availableOption.productId, variantId: availableOption.variantId };
+    expect(startingOffer(c, builder)?.price).toBe(10500);
+
+    builder.available = false;
+    expect(startingOffer(c, builder)).toBeNull();
+  });
   it("calcula preço do combo fixo sem somar seus componentes outra vez", () => {
     const c = catalog();
     combos(c);

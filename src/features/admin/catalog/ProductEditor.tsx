@@ -8,6 +8,7 @@ import {
   Upload,
 } from "lucide-react";
 import {
+  hasNutritionValues,
   type Catalog,
   type ChoiceGroup,
   type Component,
@@ -21,6 +22,10 @@ import { FoodImage } from "../../catalog/products";
 import { optimizeUpload } from "./images";
 
 const uid = () => crypto.randomUUID();
+const unconfirmNutrition = (variant: Variant): Variant =>
+  variant.nutrition?.confirmed
+    ? { ...variant, nutrition: { ...variant.nutrition, confirmed: false } }
+    : variant;
 const cents = (s: string) => {
   const n = Number(s.replace(",", "."));
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
@@ -68,11 +73,19 @@ export default function ProductEditor({
     [nutrition, setNutrition] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const change = <K extends keyof Product>(key: K, value: Product[K]) =>
-    setP((old) => ({ ...old, [key]: value }));
+    setP((old) => {
+      const next = { ...old, [key]: value };
+      if (key === "name" || key === "description" || key === "ingredients") {
+        next.variants = old.variants.map(unconfirmNutrition);
+      }
+      return next;
+    });
   const updateVariant = (id: string, patch: Partial<Variant>) =>
     setP((old) => ({
       ...old,
-      variants: old.variants.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+      variants: old.variants.map((v) =>
+        v.id !== id ? v : { ...(patch.name !== undefined ? unconfirmNutrition(v) : v), ...patch },
+      ),
     }));
   const updateGroup = (id: string, patch: Partial<ChoiceGroup>) =>
     setP((old) => ({
@@ -142,8 +155,9 @@ export default function ProductEditor({
               {p.image ? "Trocar foto" : "Adicionar foto real"}
             </button>
             <p className="small muted">
-              JPEG, PNG ou WebP · até 15 MB. A foto será otimizada e os
-              metadados removidos.
+              Envie a foto original em JPEG, PNG ou WebP, até 15 MB. Para mostrar
+              mais detalhes, prefira originais com pelo menos 1.280 px no lado
+              maior. Os recortes do cardápio físico funcionam como miniaturas.
             </p>
             {p.image && (
               <button
@@ -239,6 +253,7 @@ export default function ProductEditor({
                     setP({
                       ...p,
                       kind: e.target.value as Product["kind"],
+                      variants: p.variants.map(unconfirmNutrition),
                       components:
                         e.target.value === "fixed" ? p.components : [],
                       groups: p.groups,
@@ -308,8 +323,8 @@ export default function ProductEditor({
                 {nutrition === v.id && (
                   <div className="nutrition-editor">
                     <p className="small muted">
-                      Valores da opção selecionada, sem adicionais. Campos
-                      vazios serão mostrados como não informados.
+                      Confira a porção e a composição do produto. A tabela
+                      confirmada aparece na ficha de produtos avulsos sem adicionais.
                     </p>
                     {(
                       [
@@ -321,7 +336,7 @@ export default function ProductEditor({
                         ["saturated", "Gorduras saturadas (g)"],
                         ["fiber", "Fibras (g)"],
                         ["sodium", "Sódio (mg)"],
-                      ] as [keyof Nutrition, string][]
+                      ] as [Exclude<keyof Nutrition, "confirmed">, string][]
                     ).map(([key, label]) => (
                       <label className="field" key={key}>
                         {label}
@@ -334,12 +349,28 @@ export default function ProductEditor({
                                 serving: "",
                                 ...v.nutrition,
                                 [key]: e.target.value,
+                                confirmed: false,
                               },
                             })
                           }
                         />
                       </label>
                     ))}
+                    <label className="switch-row">
+                      <span>Porção e composição conferidas</span>
+                      <input
+                        type="checkbox"
+                        checked={v.nutrition?.confirmed === true}
+                        disabled={p.kind !== "product" || !hasNutritionValues(v.nutrition)}
+                        onChange={(e) => {
+                          if (v.nutrition) {
+                            updateVariant(v.id, {
+                              nutrition: { ...v.nutrition, confirmed: e.target.checked },
+                            });
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
               </div>
