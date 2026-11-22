@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import {
   hasNutritionValues,
+  money,
+  variantBasePrice,
   type Catalog,
   type ChoiceGroup,
   type Component,
@@ -89,6 +91,7 @@ export default function ProductEditor({
   const nameError = useId();
   const variantErrors = useId();
   const dirty = JSON.stringify(p) !== JSON.stringify(product);
+  const byWeight = p.pricePerKg !== undefined;
   useUnsavedChanges(dirty);
   useEffect(() => {
     if (confirmDiscard) continueEditing.current?.focus();
@@ -105,7 +108,10 @@ export default function ProductEditor({
     setP((old) => ({
       ...old,
       variants: old.variants.map((v) =>
-        v.id !== id ? v : { ...(patch.name !== undefined ? unconfirmNutrition(v) : v), ...patch },
+        v.id !== id ? v : {
+          ...(patch.name !== undefined || "weightGrams" in patch ? unconfirmNutrition(v) : v),
+          ...patch,
+        },
       ),
     }));
   const updateGroup = (id: string, patch: Partial<ChoiceGroup>) =>
@@ -133,7 +139,9 @@ export default function ProductEditor({
       !p.name.trim() ||
       !p.variants.length ||
       p.variants.some(
-        (v) => !v.name.trim() || v.price < 0 || !Number.isSafeInteger(v.price),
+        (v) => !v.name.trim() || (byWeight
+          ? variantBasePrice(p, v) === null
+          : v.price < 0 || !Number.isSafeInteger(v.price)),
       ) ||
       p.groups.some((group) => group.options.some((option) =>
         option.price < 0 || !Number.isSafeInteger(option.price),
@@ -284,6 +292,7 @@ export default function ProductEditor({
                     setP({
                       ...p,
                       kind: e.target.value as Product["kind"],
+                      pricePerKg: e.target.value === "product" ? p.pricePerKg : undefined,
                       variants: p.variants.map(unconfirmNutrition),
                       components:
                         e.target.value === "fixed" ? p.components : [],
@@ -297,6 +306,32 @@ export default function ProductEditor({
                 </select>
               </label>
             </div>
+            {p.kind === "product" && (
+              <>
+                <label className="switch-row">
+                  <span>Calcular preço por peso</span>
+                  <input
+                    type="checkbox"
+                    checked={byWeight}
+                    onChange={(e) => setP({
+                      ...p,
+                      pricePerKg: e.target.checked ? 0 : undefined,
+                      variants: p.variants.map((v) => ({
+                        ...unconfirmNutrition(v),
+                        price: Number.isSafeInteger(v.price) ? v.price : 0,
+                      })),
+                    })}
+                  />
+                </label>
+                {byWeight && (
+                  <Price
+                    label="Preço por quilo (R$)"
+                    value={p.pricePerKg ?? 0}
+                    onChange={(price) => change("pricePerKg", price)}
+                  />
+                )}
+              </>
+            )}
             <div className="editor-section-heading">
               <h3>
                 {p.kind === "product"
@@ -331,10 +366,32 @@ export default function ProductEditor({
                   />
                   {triedSave && !v.name.trim() && <small id={`${variantErrors}-${i}`} className="field-error">Informe o nome da opção.</small>}
                 </label>
-                <Price
-                  value={v.price}
-                  onChange={(price) => updateVariant(v.id, { price })}
-                />
+                {byWeight ? (
+                  <label className="field">
+                    Peso da porção (g)
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={v.weightGrams ?? ""}
+                      aria-invalid={triedSave && variantBasePrice(p, v) === null || undefined}
+                      aria-describedby={triedSave && variantBasePrice(p, v) === null ? `${variantErrors}-weight-${i}` : undefined}
+                      onChange={(e) => updateVariant(v.id, {
+                        weightGrams: e.target.value ? e.target.valueAsNumber : undefined,
+                      })}
+                    />
+                    {triedSave && variantBasePrice(p, v) === null && (
+                      <small id={`${variantErrors}-weight-${i}`} className="field-error">
+                        Use um peso inteiro em gramas e um preço que resulte em centavos inteiros.
+                      </small>
+                    )}
+                  </label>
+                ) : (
+                  <Price
+                    value={v.price}
+                    onChange={(price) => updateVariant(v.id, { price })}
+                  />
+                )}
                 <button
                   className="icon-button danger"
                   aria-label={`Remover opção ${i + 1}`}
@@ -409,6 +466,26 @@ export default function ProductEditor({
                 )}
               </div>
             ))}
+            {byWeight && (
+              <div className="table-scroll">
+                <table className="data-table portion-prices">
+                  <caption>Preços calculados por porção</caption>
+                  <thead><tr><th scope="col">Opção</th><th scope="col">Peso</th><th scope="col">Preço</th></tr></thead>
+                  <tbody>
+                    {p.variants.map((v) => {
+                      const price = variantBasePrice(p, v);
+                      return (
+                        <tr key={v.id}>
+                          <td>{v.name}</td>
+                          <td>{v.weightGrams ? `${v.weightGrams} g` : "Informe o peso"}</td>
+                          <td>{price === null ? "Revise preço e peso" : money(price)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {p.kind === "fixed" && (
               <section className="editor-section">
                 <div className="editor-section-heading">

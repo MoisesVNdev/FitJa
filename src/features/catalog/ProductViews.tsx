@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ChevronDown, Leaf, ShoppingBag, ZoomIn, ZoomOut } from "lucide-react";
-import { componentAvailable, hasNutritionValues, money, quoteCart, startingOffer, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
+import { componentAvailable, hasNutritionValues, money, quoteCart, startingOffer, variantBasePrice, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
 import { Modal, Quantity } from "../../shared/ui";
 
 type PhotoDimensions = { width: number; height: number };
+const priceLabel = (price: number | null) => price === null ? "Indisponível" : money(price);
 
 export function FoodImage({
   image,
@@ -83,7 +84,7 @@ export function FeaturedProduct({
       </div>
       <div className="featured-details">
         <h2>{product.name}</h2>
-        <p>{offer.variant.name}</p>
+        <p>{variantLabel(product, offer.variant)}</p>
         <div className="featured-controls">
           <strong className="featured-price">{money(offer.price)}</strong>
           <button
@@ -116,6 +117,7 @@ export function ProductCard({
   eager?: boolean;
 }) {
   const offer = startingOffer(catalog, p);
+  const variant = offer?.variant ?? p.variants[0];
   return (
     <article className={`product-card ${offer ? "" : "sold-out"}`}>
       <div className="product-photo">
@@ -124,7 +126,7 @@ export function ProductCard({
       <div className="product-copy">
         {categoryName && <span className="product-category">{categoryName}</span>}
         <h3 className="product-title">{p.name}</h3>
-        <p>{offer?.variant.name ?? p.variants[0]?.name}</p>
+        {variant && <p>{variantLabel(p, variant)}</p>}
         {p.badge && <span className="product-badge">{p.badge}</span>}
         <div className="product-bottom">
           {offer ? (
@@ -229,8 +231,8 @@ export function ProductDialog({
               {p.ingredients && <p><strong>Ingredientes:</strong> {p.ingredients}</p>}
               {variant && (
                 <p className="detail-price" role="status">
-                  <span>{variant.name}</span>
-                  <strong>{price === null ? "Preço base " : ""}{money(price ?? variant.price)}</strong>
+                  <span>{variantLabel(p, variant)}</span>
+                  <strong>{price === null ? "Preço base " : ""}{priceLabel(price ?? variantBasePrice(p, variant))}</strong>
                 </p>
               )}
               {canEnlarge && (
@@ -262,9 +264,9 @@ export function ProductDialog({
                     checked={v.id === variantId}
                     onChange={() => setVariant(v.id)}
                   />
-                  {v.name}
+                  {variantLabel(p, v)}
                 </span>
-                <strong>{money(v.price)}</strong>
+                <strong>{priceLabel(variantBasePrice(p, v))}</strong>
               </label>
             ))}
           </fieldset>

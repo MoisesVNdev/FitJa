@@ -246,3 +246,13 @@ As regras legadas de hospedagem permitem o enquadramento de mesma origem somente
 | Prévia e publicação | Antes de publicar, a cópia existia apenas no rascunho. Em ambos os tamanhos, a prévia a 390 px e a rota pública em outra aba após publicação local coincidiram em destaque, foto, preço, ordem das categorias, fonte Manrope e cor do rascunho. O painel manteve o tema próprio. [Prévia em 1366](../../artifacts/etapa-05-painel-notebook/previa-1366.png) · [Publicação em 1366](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1366.png) · [Prévia em 1280](../../artifacts/etapa-05-painel-notebook/previa-1280.png) · [Publicação em 1280](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1280.png) |
 
 Com cache desativado, a rota pública em outra aba não solicitou os módulos de administração, os estilos administrativos nem os módulos de prévia. A revisão com `web-design-guidelines` cobriu navegação, nomes dos controles, indicação de estado, campos com erro e aviso de saída. `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. A aplicação efetiva dos cabeçalhos e o acesso administrativo na hospedagem permanecem para homologação.
+
+## Etapa 06 do roteiro móvel · Regras comerciais compartilhadas
+
+### Preço por peso
+
+O preço por quilo em centavos (`Product.pricePerKg`) ativa o modelo de peso. Cada variante mantém seu identificador e informa o peso permitido em gramas inteiros (`Variant.weightGrams`). As opções e preços existentes continuam válidos em catálogos sem o novo campo. O catálogo publicado, o editor, a ficha e a cotação usam o cálculo de `shared/domain`. As APIs de checkout e edição de pedido recebem os mesmos identificadores e recalculam a cotação pelo domínio compartilhado.
+
+No Chrome local, o editor mostrou 100 g por R$ 5 e 200 g por R$ 10 a partir de R$ 50/kg. O teste salvou e publicou o produto fictício no perfil de demonstração, trocou a porção na ficha e conferiu 200 g por R$ 10 na sacola. [Tabela no editor](../../artifacts/etapa-06-regras-comerciais/peso-editor-1366.png) · [Ficha a 390 px](../../artifacts/etapa-06-regras-comerciais/peso-ficha-390.png)
+
+Até a decisão sobre arredondamento, o catálogo e o checkout exigem valores exatos em centavos inteiros. A decisão ficou no [planejamento funcional](planejamento-funcional-lais-fit-ja-v0.1.md#preço-proporcional-por-peso).

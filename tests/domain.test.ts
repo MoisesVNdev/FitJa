@@ -24,6 +24,41 @@ const line = (
   quantity,
   selections: [],
 });
+
+describe("preço por peso", () => {
+  function weighedCatalog() {
+    const c = catalog();
+    const product = c.products.find((p) => p.id === "tapioca")!;
+    product.pricePerKg = 5000;
+    product.variants = [
+      { id: "v0", name: "Pequena", weightGrams: 100, price: 0 },
+      { id: "v1", name: "Grande", weightGrams: 200, price: 0 },
+    ];
+    return { c, product };
+  }
+
+  it("calcula as porções cadastradas e preserva o identificador da opção", () => {
+    const { c, product } = weighedCatalog();
+    validateCatalog(c);
+    expect(startingOffer(c, product)?.price).toBe(500);
+    expect(quoteCart(c, [line()]).lines[0]).toMatchObject({
+      variantId: "v0",
+      variant: "Pequena · 100 g",
+      unitPrice: 500,
+    });
+    expect(quoteCart(c, [line("tapioca", "v1", 3)]).total).toBe(3000);
+    expect(() => quoteCart(c, [line("tapioca", "peso-livre")])).toThrow("opção");
+  });
+
+  it("exige centavos inteiros na publicação e na cotação", () => {
+    const { c, product } = weighedCatalog();
+    product.pricePerKg = 5055;
+    expect(() => validateCatalog(c)).toThrow("centavos inteiros");
+    expect(() => quoteCart(c, [line()])).toThrow("indisponível");
+    expect(startingOffer(c, product)?.price).toBe(1011);
+  });
+});
+
 function combos(c: Catalog) {
   const fixed: Product = {
     ...structuredClone(c.products.find((p) => p.id === "tapioca")!),

@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Star, Trash2, Undo2 } from "lucide-react";
-import { available, money, normalize, type Catalog, type Product } from "../../../../shared/domain";
+import { available, money, normalize, variantBasePrice, type Catalog, type Product } from "../../../../shared/domain";
 import { newProduct } from "../../../data";
 import ProductEditor from "./ProductEditor";
 
 import { Empty } from "../ui";
+
+function catalogPrice(product: Product) {
+  const prices = product.variants.flatMap((variant) => variantBasePrice(product, variant) ?? []);
+  return prices.length ? money(Math.min(...prices)) : "Sem preço";
+}
+
 export default function CatalogEditor({
   catalog: c,
   change,
@@ -131,7 +137,7 @@ export default function CatalogEditor({
                 <td>
                   {c.categories.find((cat) => cat.id === p.categoryId)?.name}
                 </td>
-                <td>{p.variants.length ? money(Math.min(...p.variants.map((v) => v.price))) : "Sem preço"}</td>
+                <td>{catalogPrice(p)}</td>
                 <td>
                   <button
                     className={`availability ${available(c, p) ? "yes" : ""}`}

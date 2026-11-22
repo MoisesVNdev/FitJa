@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CheckCheck, Copy, MessageCircle, ShoppingBag, Trash2 } from "lucide-react";
-import { money, orderMessage, portionLabel, validPhone, whatsappUrl, type CartLine, type Catalog } from "../../../shared/domain";
+import { money, orderMessage, portionLabel, validPhone, variantLabel, whatsappUrl, type CartLine, type Catalog } from "../../../shared/domain";
 import { demo, backendConfigured, track } from "../../shared/api/checkout";
 import { Modal, Notice, Quantity } from "../../shared/ui";
 import { FoodImage } from "../catalog/products";
@@ -104,7 +104,7 @@ export function CartDialog({
                     <div className="cart-item-main">
                       <strong>{p?.name || "Produto removido"}</strong>
                       <p>
-                        {portionLabel(line.quantity)} · {variant?.name || "Opção indisponível"}
+                        {portionLabel(line.quantity)} · {p && variant ? variantLabel(p, variant) : "Opção indisponível"}
                       </p>
                       {details.map((d, i) => (
                         <small key={i}>{d}</small>

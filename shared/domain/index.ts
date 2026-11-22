@@ -19,6 +19,7 @@ export type Variant = {
   id: string;
   name: string;
   price: number;
+  weightGrams?: number;
   nutrition?: Nutrition;
 };
 export type Component = {
@@ -52,6 +53,7 @@ export type Product = {
   featured: boolean;
   badge: string;
   kind: "product" | "fixed" | "builder";
+  pricePerKg?: number;
   variants: Variant[];
   groups: ChoiceGroup[];
   components: Component[];
@@ -131,6 +133,24 @@ export function assert(condition: unknown, message: string): asserts condition {
 }
 const integer = (v: unknown, min = 0, max = 1_000_000) =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max;
+export function weightPortionPrice(pricePerKg: number, grams: number | undefined) {
+  if (!integer(pricePerKg, 1) || grams === undefined || !integer(grams, 1)) return null;
+  const price = (pricePerKg * grams) / 1000;
+  return integer(price, 1) ? price : null;
+}
+
+export function variantBasePrice(product: Product, variant: Variant) {
+  return product.pricePerKg === undefined
+    ? variant.price
+    : weightPortionPrice(product.pricePerKg, variant.weightGrams);
+}
+
+export function variantLabel(product: Product, variant: Variant) {
+  return product.pricePerKg === undefined
+    ? variant.name
+    : `${variant.name} · ${variant.weightGrams} g`;
+}
+
 export function validPhone(phone: string) {
   return /^55[1-9]\d{9,10}$/.test(phone);
 }
@@ -285,6 +305,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
       "Cadastre de 1 a 30 opções de produto.",
     );
     const variants = new Set<string>();
+    assert(
+      p.pricePerKg === undefined || (p.kind === "product" && integer(p.pricePerKg, 1)),
+      `Preço por quilo inválido em ${p.name}.`,
+    );
     for (const v of p.variants) {
       assert(
         text(v.id, 80, true) &&
@@ -295,9 +319,15 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
       );
       variants.add(v.id);
       assert(
-        p.archived || v.price > 0,
+        p.pricePerKg !== undefined || p.archived || v.price > 0,
         `Informe preços maiores que zero em ${p.name} antes de publicar.`,
       );
+      if (p.pricePerKg !== undefined) {
+        assert(
+          variantBasePrice(p, v) !== null,
+          `Confira o peso e o preço de ${v.name} em ${p.name}. A porção deve custar um valor positivo em centavos inteiros.`,
+        );
+      }
       if (v.nutrition) {
         for (const [k, n] of Object.entries(v.nutrition))
           assert(
@@ -420,7 +450,9 @@ export function available(c: Catalog, p: Product) {
 export function startingOffer(c: Catalog, p: Product) {
   if (!p.variants.length || !available(c, p)) return null;
   const variant = p.variants.reduce((cheapest, candidate) =>
-    candidate.price < cheapest.price ? candidate : cheapest,
+    (variantBasePrice(p, candidate) ?? Infinity) < (variantBasePrice(p, cheapest) ?? Infinity)
+      ? candidate
+      : cheapest,
   );
   const selections = p.groups
     .filter((group) => group.min > 0)
@@ -475,7 +507,8 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
       Array.isArray(line.selections) && line.selections.length <= 100,
       "Escolhas inválidas.",
     );
-    let unitPrice = v.price;
+    let unitPrice = variantBasePrice(p, v);
+    assert(unitPrice !== null, `O preço por peso de ${p.name} está indisponível.`);
     const components = p.components.map((x) => ({
       ...x,
       name: c.products.find((y) => y.id === x.productId)!.name,
@@ -534,7 +567,7 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
         quantity: s.quantity,
       })),
       name: p.name,
-      variant: v.name,
+      variant: variantLabel(p, v),
       unitPrice,
       total: unitPrice * line.quantity,
       details,

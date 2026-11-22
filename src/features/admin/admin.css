@@ -663,6 +663,19 @@
   grid-template-columns: 1fr 1fr 35px;
   gap: 10px;
 }
+.portion-prices {
+  white-space: normal;
+}
+.portion-prices caption {
+  text-align: left;
+  font-weight: 800;
+}
+.portion-prices th {
+  color: var(--text);
+}
+.portion-prices td:last-child {
+  font-variant-numeric: tabular-nums;
+}
 .nutrition-editor {
   grid-column: 1/-1;
   display: grid;
