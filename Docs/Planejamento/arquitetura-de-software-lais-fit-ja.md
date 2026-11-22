@@ -99,7 +99,7 @@ O encaminhamento agora inclui controles nativos de Entrega/Retirada e usa `order
 | Mídia | `uploadProductImages({name, blob}[])` retorna URL pública de 640 px, com versões 320/640/1280 WebP e fallback JPEG. A geração não amplia o original. R2 deverá separar originais privados e derivados públicos; o envio de original privado ainda não existe. |
 | Eventos | `EventRow` em `shared/contracts/admin.ts`; falha de telemetria não bloqueia cardápio nem checkout. Preservar paginação dos relatórios e não usar eventos como vendas. |
 
-Erros atuais chegam como `Error.message`; não há envelope HTTP ou códigos estáveis definidos. A conversa 03 deve definir status e códigos para preço alterado, indisponibilidade, conflito, acesso negado e limite de requisições, preservando a seleção para revisão. Horários ainda são texto (`Catalog.hours`), não calendário estruturado. Estado “Em avaliação”, forma de pagamento, publicação operacional independente e regras completas das personalizadas continuam pendentes de contratos próprios. Não simular essas capacidades como concluídas.
+No adaptador legado, erros chegam como `Error.message` e horários vêm de `Catalog.hours`. A etapa 07 abaixo registra o contrato do Worker e a demonstração local para horários estruturados, disponibilidade independente, estado “Em avaliação” e forma de pagamento. A montagem personalizada experimental segue a pendência da etapa 06.
 
 ### Verificação e limite desta entrega
 
@@ -274,3 +274,38 @@ O aceite usou dados fictícios no Chrome local a 1366 × 768 px no painel e 390 
 ### Combos e montagem personalizada
 
 Os combos fixos e os grupos de escolhas existentes continuam disponíveis. A montagem experimental aguarda um exemplo aprovado pela Laís com tamanhos, escolhas obrigatórias e opcionais, limites e preço. O aceite da pausa seletiva, da edição e duplicação da montagem e dos subtotais pronto e estimado segue pendente.
+
+## Etapa 07 do roteiro móvel · Operação da loja
+
+### Contratos para a conversa 03
+
+`shared/contracts/worker.ts` registra os métodos e caminhos de `/api/v1`, o tipo de cada entrada, o envelope de resposta e se a operação exige identidade da proprietária. Falhas de permissão retornam 403. Versão obsoleta, preço ou contato alterado, item indisponível e divergência de idempotência retornam 409 com códigos distintos. O checkout devolve só a referência, a cotação original, a observação enviada e a data de criação. O adaptador legado continua consumindo a resposta atual do Supabase.
+
+| Operação | Compatibilidade e garantias |
+| --- | --- |
+| Horários | `Catalog.storeHours` é opcional. Um dia omitido indica horário a consultar e uma lista vazia indica fechamento cadastrado. As faixas são locais a Caruaru (`America/Recife`), sem sobreposição e com o fim exclusivo. A data excepcional tem precedência. Catálogos antigos mantêm o texto de referência e as solicitações continuam permitidas fora de horário. |
+| Disponibilidade | `UpdateAvailability` requer a versão publicada observada e muda produto, variante ou pausa de montagens. O estado operacional tem precedência sobre a disponibilidade base do catálogo. Preservar os identificadores da variante e reaplicar a mesma regra ao cotar um combo ou escolha que a referencia. Uma publicação comum mantém as mudanças rápidas. |
+| Aparência | A prévia combina o tema anterior e o cardápio público vigente. A restauração recebe a versão exibida na prévia e a identificação do tema escolhido. Só troca as cores, a tipografia e a escala do tema. Catálogo, horários, disponibilidade, pedidos e rascunho permanecem independentes. |
+| Solicitações | `requested` continua identificando pedido criado no site com mensagem não verificada. `evaluating` é explícito. Pagamento segue como informação da proprietária. Atualizações exigem `expectedUpdatedAt`; para reutilizar a referência do site, abrir seu registro, manter a origem e gravar revisão e histórico juntos. O checkout e a venda direta aceitam chaves de idempotência com escopos e entradas próprios. |
+| Relatórios | A fila e a contagem de confirmados refletem o trabalho em aberto. Semana começa na segunda-feira e, assim como o mês, usa o calendário local. Receita e ticket derivam dos concluídos pela data de conclusão, com ajustes. Componentes do combo contam para produção. Para receita contam os produtos e combos vendidos; o ajuste pertence ao pedido. O CSV da visão geral exporta as vendas filtradas e o da lista exporta os pedidos exibidos. |
+
+A demonstração usa `localStorage` existente e serializa escritas em abas compatíveis por Web Locks. Mantém o catálogo e o histórico antigos legíveis. A gravação de pedido e histórico fica no mesmo registro local. Para o legado remoto, permanecem os campos e estados aceitos pelo esquema do Supabase. A operação rápida, a restauração isolada, o editor estruturado de horários, o estado novo e a gravação de pagamento estão disponíveis na demonstração.
+
+### Servidor e paridade
+
+A conversa 03 deve usar o domínio compartilhado para validar disponibilidade, preços, assinatura da cotação e contato na criação do pedido. Worker verifica a identidade de cada operação administrativa e aplica o limite de requisições no checkout. Em D1, a chave idempotente tem unicidade no escopo da operação, a atualização verifica a versão observada na escrita e a revisão e seu histórico são persistidos juntos. Access cobre painel, prévia e rotas administrativas. O armazenamento deve manter os originais privados no R2 e publicar somente derivados autorizados pelo fluxo de catálogo.
+
+Os cenários de `tests/operations.test.ts` e `tests/local-checkout.test.ts` são a referência para repetir os mesmos casos no Worker, inclusive cotação alterada, indisponibilidade, repetição da mesma chave, divergência de entrada, reutilização da referência de site e escrita concorrente. Comparar códigos de erro, versão, referência, cotação, totais e número de pedidos persistidos. A paridade com o adaptador remoto, o teste de autorização e o armazenamento R2 aguardam a implementação da conversa 03. Homologação, publicação, backup e recuperação seguem nas conversas 03 e 04.
+
+### Aceite da demonstração
+
+**Aprovado localmente** no Chrome 158 com perfil descartável e a prévia do build. Painel a 1366 × 768 px e loja a 390 × 844 px, com dados fictícios. A visita pública com cache desativado não requisitou módulos ou estilos administrativos.
+
+| Cenário | Resultado |
+| --- | --- |
+| Horários | O painel publicou duas faixas para um dia, fechou outro e mostrou um aviso de feriado. A sacola preparou a solicitação com número fictício durante o fechamento. O teste terminou antes de abrir o WhatsApp. Testes de domínio cobriram limites de faixas, dia fechado, feriado e horário vazio. [Painel](../../artifacts/etapa-07-operacoes/horarios-painel-1366.png) · [Aviso na sacola](../../artifacts/etapa-07-operacoes/aviso-sacola-390.png) |
+| Operação rápida e aparência | Esgotou uma opção de tapioca, pausou a montagem fictícia e manteve o combo fixo disponível. Restaurou o tema anterior após vê-lo na prévia. O sabor continuou esgotado na loja e o rascunho salvo manteve a frase reservada. [Disponibilidade](../../artifacts/etapa-07-operacoes/disponibilidade-1366.png) · [Prévia](../../artifacts/etapa-07-operacoes/tema-anterior-1366.png) · [Sabor esgotado](../../artifacts/etapa-07-operacoes/sabor-esgotado-390.png) |
+| Solicitações | Abriu o pedido pelo número do site, removeu um item, marcou “Em avaliação” e registrou Pix. O histórico e a seleção original preservaram os dois itens, e a referência continuou a mesma em um único registro. Uma segunda aba tentou gravar a revisão antiga e recebeu o conflito. [Pedido parcial](../../artifacts/etapa-07-operacoes/pedido-parcial-1366.png) · [Conflito](../../artifacts/etapa-07-operacoes/conflito-pedido-1366.png) |
+| Visão geral e CSV | A amostra incluiu venda de site, venda direta de combo com ajuste, cancelamento e pedido aceito. A semana exibiu R$ 30,00 em vendas concluídas e ticket de R$ 15,00. Os CSVs do painel e da lista incluíram apenas a venda do balcão sob os filtros aplicados. [Visão geral](../../artifacts/etapa-07-operacoes/relatorio-1366.png) |
+
+`npm.cmd test` passou com 52 testes e `npm.cmd run build` passou.

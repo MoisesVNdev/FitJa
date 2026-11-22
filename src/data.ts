@@ -423,7 +423,7 @@ export const initialCatalog: Catalog = {
   tagline: "Comida saudável para uma vida leve.",
   whatsapp: "",
   instagram: "",
-  hours: "Segunda a sexta · 08h às 13h e 15h30 às 20h30",
+  hours: "",
   location: "Na Academia Goldbox",
   banner: "Mais praticidade, mais sabor, mais Fit Já.",
   bannerEnabled: true,

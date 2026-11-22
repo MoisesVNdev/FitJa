@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { BarChart3, Eye, Leaf, Package, ShoppingBag } from "lucide-react";
 import { money, type Order } from "../../../../shared/domain";
-import { type EventRow } from "../../../shared/api/admin";
+import { caruaruDate, caruaruTimeZone } from "../../../../shared/domain/hours";
+import { filterOrders, salesReport } from "../../../../shared/domain/orders";
+import type { ReportPeriod } from "../../../../shared/contracts/admin";
+import { csv, download, type EventRow } from "../../../shared/api/admin";
 
 import { sourceLabels, date, Empty, Status } from "../ui";
 export default function Dashboard({
@@ -15,74 +18,32 @@ export default function Dashboard({
   onOrders: () => void;
   refresh: () => Promise<void>;
 }) {
-  const [days, setDays] = useState(7);
-  const now = Date.now(),
-    since = now - days * 86400000,
-    prev = since - days * 86400000;
-  const completed = orders.filter(
-      (o) =>
-        o.status === "completed" &&
-        new Date(o.completed_at || o.updated_at).getTime() >= since,
-    ),
-    requested = orders.filter(
-      (o) => o.source === "site" && new Date(o.created_at).getTime() >= since,
-    ),
-    prior = orders.filter(
-      (o) =>
-        o.status === "completed" &&
-        new Date(o.completed_at || o.updated_at).getTime() >= prev &&
-        new Date(o.completed_at || o.updated_at).getTime() < since,
-    );
-  const revenue = completed.reduce(
-      (n, o) => n + o.current.total + o.adjustment,
-      0,
-    ),
-    oldRevenue = prior.reduce((n, o) => n + o.current.total + o.adjustment, 0),
-    ev = events.filter((e) => new Date(e.created_at).getTime() >= since),
+  const [period, setPeriod] = useState<ReportPeriod>("week");
+  const [origin, setOrigin] = useState<Order["source"] | "all">("all");
+  const now = new Date();
+  const scoped = origin === "all" ? orders : orders.filter((order) => order.source === origin);
+  const report = salesReport(scoped, period, now);
+  const completed = filterOrders(scoped, { status: "completed", source: "all", search: "", period }, now);
+  const ev = events.filter((e) => +new Date(e.created_at) >= +now - 7 * 86400000),
     visits = new Set(
       ev.filter((e) => e.name === "visit").map((e) => e.session_id),
     ).size;
-  const sales = new Map<string, { name: string; n: number; value: number }>(),
-    components = new Map<string, { name: string; n: number }>();
-  completed.forEach((o) =>
-    o.current.lines.forEach((l) => {
-      const current = sales.get(l.productId) || {
-        name: l.name,
-        n: 0,
-        value: 0,
-      };
-      current.n += l.quantity;
-      current.value += l.total;
-      sales.set(l.productId, current);
-      l.components.forEach((c) => {
-        const item = components.get(`${c.productId}:${c.variantId}`) || {
-          name: c.name,
-          n: 0,
-        };
-        item.n += c.quantity * l.quantity;
-        components.set(`${c.productId}:${c.variantId}`, item);
-      });
-    }),
-  );
-  const ranking = [...sales.values()].sort((a, b) => b.n - a.n),
-    max = Math.max(1, ...ranking.map((x) => x.n));
+  const ranking = report.products;
+  const max = Math.max(1, ...ranking.map((item) => item.quantity));
+  const recent = filterOrders(scoped, { status: "completed", source: "all", search: "" }, now);
   const bars = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now - (6 - i) * 86400000),
-      day = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Sao_Paulo",
-      }).format(d),
-      value = completed
+    const d = new Date(+now - (6 - i) * 86400000),
+      day = caruaruDate(d).date,
+      value = recent
         .filter(
           (o) =>
-            new Intl.DateTimeFormat("en-CA", {
-              timeZone: "America/Sao_Paulo",
-            }).format(new Date(o.completed_at || o.updated_at)) === day,
+            caruaruDate(new Date(o.completed_at || o.updated_at)).date === day,
         )
         .reduce((n, o) => n + o.current.total + o.adjustment, 0);
     return {
       label: new Intl.DateTimeFormat("pt-BR", {
         weekday: "short",
-        timeZone: "America/Sao_Paulo",
+        timeZone: caruaruTimeZone,
       })
         .format(d)
         .replace(".", ""),
@@ -100,13 +61,19 @@ export default function Dashboard({
         <div>
           <select
             aria-label="Período do dashboard"
-            value={days}
-            onChange={(e) => setDays(+e.target.value)}
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
           >
-            <option value={7}>Últimos 7 dias</option>
-            <option value={30}>Últimos 30 dias</option>
-            <option value={90}>Últimos 90 dias</option>
+            <option value="week">Esta semana</option>
+            <option value="month">Este mês</option>
           </select>
+          <select aria-label="Origem das vendas" value={origin} onChange={(event) => setOrigin(event.target.value as typeof origin)}>
+            <option value="all">Todas as origens</option>
+            {Object.entries(sourceLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <button className="button secondary compact" onClick={() => download("fitja-vendas.csv", csv(completed))}>
+            Exportar vendas CSV
+          </button>
           <button
             className="button secondary compact"
             onClick={() => void refresh()}
@@ -118,35 +85,40 @@ export default function Dashboard({
       <div className="stat-grid">
         <Stat
           label="Vendas registradas"
-          value={money(revenue)}
-          hint={
-            oldRevenue
-              ? `${((revenue / oldRevenue - 1) * 100).toFixed(0)}% em relação ao período anterior`
-              : "Pedidos marcados como concluídos"
-          }
+          value={money(report.revenue)}
+          hint="Concluídos no período, com ajustes"
           icon={<BarChart3 />}
         />
         <Stat
           label="Pedidos concluídos"
-          value={String(completed.length)}
-          hint={`${requested.length} ${requested.length === 1 ? "solicitação iniciada" : "solicitações iniciadas"} no site`}
+          value={String(report.completed)}
+          hint="Pela data de conclusão em Caruaru"
           icon={<ShoppingBag />}
         />
         <Stat
           label="Ticket médio"
-          value={money(
-            completed.length ? Math.round(revenue / completed.length) : 0,
-          )}
-          hint="Com ajustes registrados no painel"
+          value={money(report.average)}
+          hint="Calculado sobre pedidos concluídos"
           icon={<Package />}
         />
         <Stat
           label="Acessos aproximados"
           value={String(visits)}
-          hint={`${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
+          hint={`Últimos 7 dias · ${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
           icon={<Eye />}
         />
       </div>
+      <section className="admin-card table-scroll">
+        <h2>Vendas por origem</h2>
+        <table className="data-table">
+          <thead><tr><th scope="col">Origem</th><th scope="col">Pedidos concluídos</th><th scope="col">Vendas</th></tr></thead>
+          <tbody>
+            {(Object.keys(sourceLabels) as Order["source"][]).filter((source) => origin === "all" || source === origin).map((source) => (
+              <tr key={source}><th scope="row">{sourceLabels[source]}</th><td>{report.byOrigin[source].count}</td><td>{money(report.byOrigin[source].total)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
       <div className="dashboard-columns">
         <section className="admin-card">
           <div className="card-heading">
@@ -190,15 +162,16 @@ export default function Dashboard({
           </div>
           {ranking.length ? (
             ranking.slice(0, 5).map((p, i) => (
-              <div className="ranking" key={p.name}>
+              <div className="ranking" key={p.id}>
                 <span>{String(i + 1).padStart(2, "0")}</span>
                 <div>
                   <strong>{p.name}</strong>
+                  <small className="muted">{money(p.total)} em produtos</small>
                   <div className="rank-track">
-                    <div style={{ width: `${(p.n / max) * 100}%` }} />
+                    <div style={{ width: `${(p.quantity / max) * 100}%` }} />
                   </div>
                 </div>
-                <b>{p.n}</b>
+                <b>{p.quantity}</b>
               </div>
             ))
           ) : (
@@ -209,7 +182,7 @@ export default function Dashboard({
           )}
         </section>
       </div>
-      {components.size > 0 && (
+      {report.components.length > 0 && (
         <section className="admin-card">
           <h2>Componentes dos combos</h2>
           <p className="muted">
@@ -217,10 +190,10 @@ export default function Dashboard({
             novamente.
           </p>
           <div className="component-chips">
-            {[...components.values()].map((x) => (
-              <span key={x.name}>
+            {report.components.map((x) => (
+              <span key={x.id}>
                 {x.name}
-                <b>{x.n} un.</b>
+                <b>{x.quantity} un.</b>
               </span>
             ))}
           </div>
@@ -257,7 +230,7 @@ export default function Dashboard({
                     <td>{date(o.created_at)}</td>
                     <td>{sourceLabels[o.source]}</td>
                     <td>
-                      <Status status={o.status} />
+                      <Status status={o.status} source={o.source} />
                     </td>
                     <td>{money(o.current.total + o.adjustment)}</td>
                   </tr>

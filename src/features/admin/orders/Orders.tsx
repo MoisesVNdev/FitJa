@@ -1,7 +1,9 @@
 import { useId, useRef, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
-import { available, money, normalize, portionLabel, quoteCart, type Catalog, type CartLine, type Order, type Product, type Quote } from "../../../../shared/domain";
-import { cartFromQuote, csv, download, saveOrder } from "../../../shared/api/admin";
+import { available, money, portionLabel, quoteCart, type Catalog, type CartLine, type Order, type Product, type Quote } from "../../../../shared/domain";
+import type { OrderFilters } from "../../../../shared/contracts/admin";
+import { filterOrders } from "../../../../shared/domain/orders";
+import { cartFromQuote, csv, demo, download, findSiteOrder, saveOrder } from "../../../shared/api/admin";
 import { Modal, Notice } from "../../../shared/ui";
 import { ProductDialog } from "../../catalog/products";
 
@@ -20,17 +22,16 @@ export default function Orders({
   report: (s: string) => void;
   pendingOnly?: boolean;
 }) {
-  const [status, setStatus] = useState(pendingOnly ? "requested" : "all"),
+  const [status, setStatus] = useState<OrderFilters["status"]>(pendingOnly ? "pending" : "all"),
+    [source, setSource] = useState<OrderFilters["source"]>("all"),
+    [period, setPeriod] = useState<OrderFilters["period"]>(),
+    [reference, setReference] = useState(""),
+    [referenceError, setReferenceError] = useState(""),
     [search, setSearch] = useState(""),
     [editing, setEditing] = useState<Order | null | undefined>(),
     [saving, setSaving] = useState(false);
-  const filtered = orders.filter(
-    (o) =>
-      (status === "all" || o.status === status) &&
-      normalize(
-        `${o.reference} ${o.current.lines.map((l) => l.name).join(" ")}`,
-      ).includes(normalize(search)),
-  ).sort((a, b) => Number(b.status === "requested") - Number(a.status === "requested"));
+  const filtered = filterOrders(orders, { status, source, search, period });
+  const statuses = Object.entries(statusLabels).filter(([id]) => demo || id !== "evaluating");
   return (
     <>
       <div className="section-toolbar">
@@ -46,15 +47,23 @@ export default function Orders({
           />
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => setStatus(e.target.value as OrderFilters["status"])}
             aria-label="Filtrar status"
           >
             <option value="all">Todos os status</option>
-            {Object.entries(statusLabels).map(([id, label]) => (
+            <option value="pending">A responder</option>
+            {statuses.map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
               </option>
             ))}
+          </select>
+          <select value={source} aria-label="Filtrar origem" onChange={(event) => setSource(event.target.value as OrderFilters["source"])}>
+            <option value="all">Todas as origens</option>
+            {Object.entries(sourceLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <select value={period ?? ""} aria-label="Filtrar período" onChange={(event) => setPeriod((event.target.value || undefined) as OrderFilters["period"])}>
+            <option value="">Todas as datas</option><option value="week">Esta semana</option><option value="month">Este mês</option>
           </select>
         </div>
         <div className="toolbar-inputs">
@@ -71,6 +80,20 @@ export default function Orders({
           </button>
         </div>
       </div>
+      {demo && (
+        <form className="admin-card order-reference-form" onSubmit={(event) => {
+          event.preventDefault();
+          setReferenceError("");
+          void findSiteOrder(reference).then(setEditing).catch((error) => setReferenceError(error.message));
+        }}>
+          <label className="field">Referência do site
+            <input name="site-reference" value={reference} maxLength={80} autoComplete="off" spellCheck={false}
+              onChange={(event) => { setReference(event.target.value); setReferenceError(""); }} required />
+          </label>
+          <button className="button secondary compact" type="submit">Abrir solicitação do site</button>
+          {referenceError && <p className="field-error" role="alert">{referenceError}</p>}
+        </form>
+      )}
       <section className="admin-card table-scroll">
         <table className="data-table">
           <thead>
@@ -95,7 +118,8 @@ export default function Orders({
                 <td>{date(o.created_at)}</td>
                 <td>{sourceLabels[o.source]}</td>
                 <td>
-                  <Status status={o.status} />
+                  <Status status={o.status} source={o.source} />
+                  {o.source === "site" && o.status === "requested" && <small className="order-check">Confira se a mensagem chegou</small>}
                 </td>
                 <td>{money(o.current.total + o.adjustment)}</td>
                 <td>
@@ -158,6 +182,7 @@ function OrderEditor({
     [status, setStatus] = useState<Order["status"]>(o?.status || "completed"),
     [source, setSource] = useState<Order["source"]>(o?.source || "counter"),
     [notes, setNotes] = useState(o?.notes || ""),
+    [paymentMethod, setPaymentMethod] = useState(o?.paymentMethod || ""),
     [adjustment, setAdjustment] = useState(String((o?.adjustment || 0) / 100)),
     [reason, setReason] = useState(o?.adjustment_reason || ""),
     [selected, setSelected] = useState<Product | null>(null),
@@ -168,8 +193,9 @@ function OrderEditor({
   const reasonField = useRef<HTMLInputElement>(null);
   const adjustmentError = useId();
   const reasonError = useId();
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const dirty = changed || status !== (o?.status || "completed") || source !== (o?.source || "counter") ||
-    notes !== (o?.notes || "") || reason !== (o?.adjustment_reason || "") ||
+    notes !== (o?.notes || "") || paymentMethod !== (o?.paymentMethod || "") || reason !== (o?.adjustment_reason || "") ||
     adjustment !== String((o?.adjustment || 0) / 100);
   useUnsavedChanges(dirty);
   let q: Quote | null = o && !changed ? o.current : null,
@@ -200,7 +226,8 @@ function OrderEditor({
                 value={status}
                 onChange={(e) => setStatus(e.target.value as Order["status"])}
               >
-                {Object.entries(statusLabels).map(([id, label]) => (
+                {Object.entries(statusLabels).filter(([id]) =>
+                  (demo || id !== "evaluating") && (o || id !== "requested")).map(([id, label]) => (
                   <option key={id} value={id}>
                     {label}
                   </option>
@@ -219,7 +246,14 @@ function OrderEditor({
                 <option value="whatsapp">WhatsApp direto</option>
               </select>
             </label>
+            {demo && <label className="field">Forma de pagamento informada
+              <input name="payment-method" maxLength={80} value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value)} placeholder="Ex.: Pix…" autoComplete="off" />
+            </label>}
           </div>
+          {o?.source === "site" && status === "requested" && (
+            <Notice>Confira se a mensagem chegou antes de passar à avaliação.</Notice>
+          )}
           {cart.map((l) => {
             const item = q?.lines.find((x) => x.key === l.key),
               p = c.products.find((x) => x.id === l.productId);
@@ -350,13 +384,30 @@ function OrderEditor({
                 Atualizado em {date(o.updated_at)}. Alterações são registradas
                 no histórico de auditoria.
               </p>
+              {o.originalNotes && <p>Observação original: {o.originalNotes}</p>}
+            </details>
+          )}
+          {!!o?.history?.length && (
+            <details className="nutrition">
+              <summary>Histórico do pedido</summary>
+              <ol className="order-history">
+                {o.history.map((entry) => (
+                  <li key={entry.at}>
+                    <strong>{statusLabels[entry.status]} · {date(entry.at)}</strong>
+                    <p>{entry.quote.lines.map((item) => `${item.quantity}× ${item.name} · ${item.variant}`).join(", ")}</p>
+                    <p>{money(entry.quote.total + entry.adjustment)}{entry.paymentMethod ? ` · ${entry.paymentMethod}` : ""}</p>
+                    {entry.notes && <p>{entry.notes}</p>}
+                    {entry.adjustmentReason && <p>{entry.adjustmentReason}</p>}
+                  </li>
+                ))}
+              </ol>
             </details>
           )}
           {problem && <Notice error>{problem}</Notice>}
-          {error && <Notice error>{error}</Notice>}
         </div>
       </div>
       <div className="modal-footer">
+        {error && <Notice error>{error}</Notice>}
         <button
           className="button primary full"
           disabled={busy || !q || !cart.length}
@@ -370,12 +421,15 @@ function OrderEditor({
             void onSave({
               id: o?.id,
               expectedUpdatedAt: o?.updated_at,
+              siteReference: demo && o?.source === "site" ? o.reference : undefined,
+              idempotencyKey: demo && !o ? idempotencyKey : undefined,
               cart: changed || !o ? cart : undefined,
               notes,
               status,
               source,
               adjustment: amount,
               adjustment_reason: reason,
+              paymentMethod: demo ? paymentMethod : undefined,
             }).catch((e) => setError(e.message));
           }}
         >

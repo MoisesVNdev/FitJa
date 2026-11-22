@@ -1683,3 +1683,19 @@ html:has(.preview-store) {
 .fulfillment-options label { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 16px; border: 1px solid var(--muted); border-radius: 12px; cursor: pointer; }
 .fulfillment-options label:has(input:checked) { background: var(--surface); outline: 2px solid var(--primary); }
 .fulfillment-options input { accent-color: var(--primary); width: 20px; height: 20px; }
+.store-hours dd {
+  margin-inline-start: 0;
+}
+.store-closure {
+  margin-block-end: 12px;
+  overflow-wrap: anywhere;
+}
+.store-hours dl {
+  display: grid;
+  gap: 6px;
+}
+.store-hours summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+}

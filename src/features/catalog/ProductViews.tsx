@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, Leaf, ShoppingBag, ZoomIn, ZoomOut } from "lucide-react";
-import { componentAvailable, hasNutritionValues, money, portionLabel, quoteCart, startingOffer, variantBasePrice, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
+import { componentAvailable, hasNutritionValues, money, portionLabel, quoteCart, startingOffer, variantBasePrice, variantInStock, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
 import { Modal, Quantity } from "../../shared/ui";
 
 type PhotoDimensions = { width: number; height: number };
@@ -167,7 +167,7 @@ export function ProductDialog({
   onAdd: (line: CartLine) => void;
 }) {
   const [variantId, setVariant] = useState(
-      initial?.variantId || p.variants[0]?.id || "",
+      initial?.variantId || p.variants.find((entry) => variantInStock(c, p, entry.id))?.id || p.variants[0]?.id || "",
     ),
     [quantity, setQuantity] = useState(initial?.quantity || 1),
     [selections, setSelections] = useState<Selection[]>(
@@ -273,11 +273,12 @@ export function ProductDialog({
                     type="radio"
                     name="variant"
                     checked={v.id === variantId}
+                    disabled={!variantInStock(c, p, v.id)}
                     onChange={() => setVariant(v.id)}
                   />
                   {variantLabel(p, v)}
                 </span>
-                <strong>{priceLabel(variantBasePrice(p, v))}</strong>
+                <strong>{variantInStock(c, p, v.id) ? priceLabel(variantBasePrice(p, v)) : "Esgotado"}</strong>
               </label>
             ))}
           </fieldset>

@@ -8,10 +8,12 @@ import { FoodImage } from "../catalog/products";
 import { Turnstile, useCheckout } from "../checkout";
 import { missingWhatsApp } from "../checkout/service";
 import { storage } from "../../shared/api/catalog";
+import type { storeHoursStatus } from "../../../shared/domain/hours";
 
 export function CartDialog({
   catalog: c,
   cart,
+  hours,
   setCart,
   onClose,
   onEdit,
@@ -20,6 +22,7 @@ export function CartDialog({
 }: {
   catalog: Catalog;
   cart: CartLine[];
+  hours: ReturnType<typeof storeHoursStatus>;
   setCart: (c: CartLine[]) => void;
   onClose: () => void;
   onEdit: (l: CartLine) => void;
@@ -59,6 +62,7 @@ export function CartDialog({
                   <CheckCheck size={32} aria-hidden="true" />
                 </span>
                 <h3>Abra a conversa e toque em enviar.</h3>
+                <p><strong>Em avaliação pela Laís após o envio</strong></p>
                 <p>
                   Sua solicitação <strong>{order.reference}</strong> foi
                   registrada. A Laís confirma os itens, o valor e o prazo na conversa.
@@ -201,6 +205,11 @@ export function CartDialog({
       {cart.length > 0 && (
         <div className="modal-footer">
           {error && <Notice error>{error}</Notice>}
+          {hours.state === "closed" && (
+            <p className="small"><strong>{hours.text}</strong><br />
+              Você pode encaminhar sua lista. A resposta pode ficar para o próximo período de atendimento.
+            </p>
+          )}
           {prepared ? (
             <>
               <a

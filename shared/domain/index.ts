@@ -1,3 +1,7 @@
+import type { OrderHistoryEntry } from "../contracts/admin.ts";
+import { OperationError, type LiveAvailability, type StoreHours } from "../contracts/operations.ts";
+import { storeHoursError } from "./hours.ts";
+
 export type Nutrition = {
   serving: string;
   confirmed?: boolean;
@@ -85,6 +89,8 @@ export type Catalog = {
   whatsapp: string;
   instagram: string;
   hours: string;
+  storeHours?: StoreHours;
+  liveAvailability?: LiveAvailability;
   location: string;
   banner: string;
   bannerEnabled: boolean;
@@ -110,7 +116,7 @@ export type QuotedLine = CartLine & {
   components: (Component & { name: string })[];
 };
 export type Quote = { lines: QuotedLine[]; total: number; signature: string };
-export type OrderStatus = "requested" | "confirmed" | "completed" | "cancelled";
+export type OrderStatus = "requested" | "evaluating" | "confirmed" | "completed" | "cancelled";
 export type Order = {
   id: string;
   reference: string;
@@ -124,6 +130,9 @@ export type Order = {
   adjustment: number;
   adjustment_reason: string;
   completed_at: string | null;
+  paymentMethod?: string;
+  history?: OrderHistoryEntry[];
+  originalNotes?: string;
 };
 export const money = (cents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -221,6 +230,22 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
     v.length <= max &&
     (!required || v.trim().length > 0);
   assert(c && typeof c === "object", "Catálogo inválido.");
+  if (c.storeHours !== undefined) {
+    const error = storeHoursError(c.storeHours);
+    assert(!error, error ?? "");
+  }
+  const live = c.liveAvailability;
+  if (live !== undefined) {
+    assert(
+      live && typeof live.buildersPaused === "boolean" &&
+      Array.isArray(live.products) && live.products.every((entry) =>
+        entry?.kind === "product" && text(entry.productId, 80, true) && typeof entry.available === "boolean") &&
+      Array.isArray(live.variants) && live.variants.every((entry) =>
+        entry?.kind === "variant" && text(entry.productId, 80, true) &&
+        text(entry.variantId, 80, true) && typeof entry.available === "boolean"),
+      "Disponibilidade publicada inválida.",
+    );
+  }
   assert(
     text(c.version, 80, true) &&
       text(c.name, 120, true) &&
@@ -464,6 +489,13 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
     }
   }
 }
+export function productInStock(c: Catalog, p: Product) {
+  return c.liveAvailability?.products.find((item) => item.productId === p.id)?.available ?? p.available;
+}
+export function variantInStock(c: Catalog, p: Product, variantId: string) {
+  return c.liveAvailability?.variants.find((item) =>
+    item.productId === p.id && item.variantId === variantId)?.available ?? true;
+}
 export function componentAvailable(
   c: Catalog,
   component: Omit<Component, "quantity">,
@@ -471,16 +503,18 @@ export function componentAvailable(
   return c.products.some(
     (p) =>
       p.id === component.productId &&
-      p.available &&
+      productInStock(c, p) &&
       !p.archived &&
       p.kind === "product" &&
-      p.variants.some((v) => v.id === component.variantId),
+      p.variants.some((v) => v.id === component.variantId && variantInStock(c, p, v.id)),
   );
 }
 export function available(c: Catalog, p: Product) {
   return (
-    p.available &&
+    productInStock(c, p) &&
     !p.archived &&
+    !(p.kind === "builder" && c.liveAvailability?.buildersPaused) &&
+    p.variants.some((variant) => variantInStock(c, p, variant.id)) &&
     p.components.every((x) => componentAvailable(c, x)) &&
     p.groups.every((g) => {
       const n = g.options.filter(
@@ -491,8 +525,9 @@ export function available(c: Catalog, p: Product) {
   );
 }
 export function startingOffer(c: Catalog, p: Product) {
-  if (!p.variants.length || !available(c, p)) return null;
-  const variant = p.variants.reduce((cheapest, candidate) =>
+  if (!available(c, p)) return null;
+  const options = p.variants.filter((entry) => variantInStock(c, p, entry.id));
+  const variant = options.reduce((cheapest, candidate) =>
     (variantBasePrice(p, candidate) ?? Infinity) < (variantBasePrice(p, cheapest) ?? Infinity)
       ? candidate
       : cheapest,
@@ -544,15 +579,17 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
     );
     keys.add(line.key);
     const p = c.products.find((x) => x.id === line.productId);
-    assert(
-      p && available(c, p),
-      `${p?.name ?? "Produto"} está indisponível. Revise o pedido.`,
-    );
+    if (!p || !available(c, p)) {
+      throw new OperationError("UNAVAILABLE", `${p?.name ?? "Produto"} está indisponível. Revise o pedido.`);
+    }
     const v = p.variants.find((x) => x.id === line.variantId);
     assert(
       v,
       "Escolha uma opção e quantidade válidas.",
     );
+    if (!variantInStock(c, p, v.id)) {
+      throw new OperationError("UNAVAILABLE", `${v.name} está indisponível. Revise o pedido.`);
+    }
     assert(
       Array.isArray(line.selections) && line.selections.length <= 100,
       "Escolhas inválidas.",
@@ -586,10 +623,9 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
         "Escolha inválida ou repetida.",
       );
       seen.add(key);
-      assert(
-        !option.component || componentAvailable(c, option.component),
-        `${option.name} está indisponível.`,
-      );
+      if (option.component && !componentAvailable(c, option.component)) {
+        throw new OperationError("UNAVAILABLE", `${option.name} está indisponível.`);
+      }
       unitPrice += option.price * s.quantity;
       details.push(
         `${s.quantity}× ${option.name}${option.price ? ` (+${money(option.price)} cada)` : ""}`,
@@ -694,9 +730,10 @@ export function validateOrderEdit(
   source: unknown,
   adjustment: unknown,
   reason: unknown,
+  allowEvaluating = false,
 ) {
   assert(
-    ["requested", "confirmed", "completed", "cancelled"].includes(
+    (allowEvaluating && status === "evaluating") || ["requested", "confirmed", "completed", "cancelled"].includes(
       String(status),
     ),
     "Status inválido.",

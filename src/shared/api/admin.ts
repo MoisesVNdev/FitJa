@@ -1,1 +1,1 @@
-export { cartFromQuote, csv, demo, download, getDraft, isAdmin, listEvents, listOrders, loadCatalog, publish, rollback, saveDraft, saveOrder, backendConfigured, type OrderEdit, type EventRow } from "./legacyAdapter";
+export { cartFromQuote, csv, demo, download, findSiteOrder, getDraft, isAdmin, listEvents, listOrders, loadCatalog, previewAppearance, publish, restoreAppearance, rollback, saveDraft, saveOrder, updateAvailability, backendConfigured, type OrderEdit, type EventRow } from "./legacyAdapter";

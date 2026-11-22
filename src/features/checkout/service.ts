@@ -1,5 +1,6 @@
 import { money, quoteCart, validPhone, type CartLine, type Catalog } from "../../../shared/domain";
 import type { CheckoutApi, CheckoutReview, Fulfillment } from "../../../shared/contracts/checkout";
+import { OperationError } from "../../../shared/contracts/operations";
 
 export const missingWhatsApp = "A loja ainda não configurou o WhatsApp. Sua sacola fica salva neste navegador.";
 
@@ -66,6 +67,9 @@ export async function reviewSelection(api: CheckoutApi, cart: CartLine[]) {
 }
 
 export function isCatalogConflict(error: unknown) {
+  if (error instanceof OperationError && error.code !== "INVALID_INPUT") {
+    return error.code === "CATALOG_CHANGED" || error.code === "UNAVAILABLE";
+  }
   // The legacy endpoint exposes error text. Keep the compatibility check at the checkout boundary.
   return error instanceof Error &&
     /cardápio mudou|está indisponível|escolha uma opção e quantidade válidas|escolha inválida ou repetida|: selecione de|WhatsApp da loja ainda não configurado|contato do WhatsApp mudou/i.test(error.message);

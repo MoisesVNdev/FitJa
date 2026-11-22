@@ -1,4 +1,4 @@
-import type { CartLine, Catalog, Order, Quote, QuotedLine } from "../domain";
+import type { CartLine, Catalog, Order, Quote, QuotedLine } from "../domain/index.ts";
 
 // Adapter contract preserved by both the local demo and the future Worker API.
 export interface CheckoutApi {
@@ -13,6 +13,15 @@ export interface CheckoutApi {
     expectedWhatsApp?: string,
   ): Promise<Order>;
 }
+
+export type SubmitCheckout = {
+  cart: CartLine[];
+  notes: string;
+  idempotencyKey: string;
+  expectedSignature: string;
+  token: string;
+  expectedWhatsApp?: string;
+};
 
 export type CheckoutLine = {
   key: string;

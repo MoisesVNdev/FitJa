@@ -1,11 +1,14 @@
 import { type Catalog } from "../../../../shared/domain";
+import HoursEditor from "./HoursEditor";
 
 export default function SettingsPanel({
   catalog: c,
   change,
+  structuredHours,
 }: {
   catalog: Catalog;
   change: (c: Catalog) => void;
+  structuredHours: boolean;
 }) {
   return (
     <div className="settings-grid">
@@ -16,7 +19,6 @@ export default function SettingsPanel({
             ["name", "Nome da marca"],
             ["tagline", "Frase da marca"],
             ["location", "Localização"],
-            ["hours", "Horários de atendimento"],
           ] as const
         ).map(([key, label]) => (
           <label className="field" key={key}>
@@ -28,7 +30,11 @@ export default function SettingsPanel({
             />
           </label>
         ))}
+        {!structuredHours && <label className="field">Horários de atendimento
+          <input maxLength={250} value={c.hours} onChange={(event) => change({ ...c, hours: event.target.value })} />
+        </label>}
       </section>
+      {structuredHours && <HoursEditor hours={c.storeHours} change={(storeHours) => change({ ...c, storeHours })} />}
       <section className="admin-card">
         <h2>Contatos e destaque</h2>
         <label className="field">

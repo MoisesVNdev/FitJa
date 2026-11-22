@@ -3,7 +3,9 @@ import "./admin.css";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, ExternalLink, Eye, LayoutDashboard, Leaf, LogOut, Package, Palette, Save, Settings, ShoppingBag, Undo2 } from "lucide-react";
 import { validateCatalog, type Catalog, type Order } from "../../../shared/domain";
-import { demo, getDraft, isAdmin, listEvents, listOrders, publish, rollback, saveDraft, type EventRow } from "../../shared/api/admin";
+import { isPending } from "../../../shared/domain/orders";
+import type { AppearancePreview } from "../../../shared/contracts/operations";
+import { demo, getDraft, isAdmin, listEvents, listOrders, loadCatalog, previewAppearance, publish, restoreAppearance, rollback, saveDraft, updateAvailability, type EventRow } from "../../shared/api/admin";
 import { Notice } from "../../shared/ui";
 import { useUnsavedChanges } from "./useUnsavedChanges";
 
@@ -14,12 +16,14 @@ const Appearance = lazy(() => import("./store/Appearance"));
 const SettingsPanel = lazy(() => import("./store/SettingsPanel"));
 const Orders = lazy(() => import("./orders/Orders"));
 const CatalogPreview = lazy(() => import("./store/CatalogPreview"));
+const AvailabilityPanel = lazy(() => import("./store/AvailabilityPanel"));
 
-type Tab = "dashboard" | "products" | "orders" | "appearance" | "settings";
+type Tab = "dashboard" | "products" | "orders" | "appearance" | "settings" | "availability";
 const tabItems: { id: Tab; name: string; icon: typeof Leaf }[] = [
   { id: "dashboard", name: "Visão geral", icon: LayoutDashboard },
   { id: "orders", name: "Pedidos", icon: ShoppingBag },
   { id: "products", name: "Cardápio", icon: Package },
+  { id: "availability", name: "Disponibilidade", icon: Check },
   { id: "appearance", name: "Aparência", icon: Palette },
   { id: "settings", name: "Configurações", icon: Settings },
 ];
@@ -28,6 +32,7 @@ export default function Admin() {
   const [authorized, setAuthorized] = useState<boolean | null>(null),
     [catalog, setCatalog] = useState<Catalog | null>(null),
     [savedDraft, setSavedDraft] = useState<Catalog | null>(null),
+    [published, setPublished] = useState<Catalog | null>(null),
     [tab, setTab] = useState<Tab>("dashboard"),
     [orders, setOrders] = useState<Order[]>([]),
     [events, setEvents] = useState<EventRow[]>([]),
@@ -35,6 +40,7 @@ export default function Admin() {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [preview, setPreview] = useState(false),
+    [themePreview, setThemePreview] = useState<AppearancePreview | null>(null),
     [pendingOnly, setPendingOnly] = useState(false),
     [availabilityOnly, setAvailabilityOnly] = useState(false);
   const [recovering, setRecovering] = useState(location.hash.includes("type=recovery"));
@@ -65,11 +71,26 @@ export default function Admin() {
   }, []);
   useEffect(() => {
     if (!authorized) return;
-    void getDraft().then((draft) => {
+    void Promise.all([getDraft(), loadCatalog().catch((error) => {
+      if (demo) throw error;
+      return null;
+    })]).then(([draft, live]) => {
       setSavedDraft(draft);
       setCatalog(draft);
+      setPublished(live);
     }).catch((problem) => setError(problem.message));
     void refresh();
+    if (!demo) return;
+    function sync(event: StorageEvent) {
+      if (event.key === "fitja:published" || event.key === null) {
+        void loadCatalog().then(setPublished).catch((problem) => setError(problem.message));
+      }
+      if (event.key === "fitja:orders" || event.key === null) {
+        void listOrders().then(setOrders).catch((problem) => setError(problem.message));
+      }
+    }
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, [authorized]);
 
   function change(next: Catalog) {
@@ -113,7 +134,8 @@ export default function Admin() {
   }
   const c = catalog;
   const catalogTab = tab === "products" || tab === "appearance" || tab === "settings";
-  const pendingCount = orders.filter((order) => order.status === "requested").length;
+  const pendingCount = orders.filter(isPending).length;
+  const acceptedCount = orders.filter((order) => order.status === "confirmed").length;
 
   return (
     <div className="admin-layout">
@@ -123,7 +145,7 @@ export default function Admin() {
           <span><strong>Laís Fit Já</strong><small>PAINEL DA PROPRIETÁRIA</small></span>
         </a>
         <nav aria-label="Navegação do painel">
-          {tabItems.map(({ id, name, icon: Icon }) => (
+          {tabItems.filter(({ id }) => demo || id !== "availability").map(({ id, name, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -167,6 +189,7 @@ export default function Admin() {
               <button type="button" className="button primary compact" disabled={busy} onClick={() => void action(async () => {
                 validateCatalog(c);
                 await publish(c);
+                setPublished(await loadCatalog());
                 setSavedDraft(c);
                 setNotice(demo ? "Publicado na demonstração deste navegador." : "Cardápio publicado.");
               })}>
@@ -192,6 +215,7 @@ export default function Admin() {
                   <div>
                     <h2>Pedidos a conferir</h2>
                     <p>{pendingCount} {pendingCount === 1 ? "solicitação" : "solicitações"} aguardando conferência</p>
+                    <p>{acceptedCount} {acceptedCount === 1 ? "pedido aceito" : "pedidos aceitos"} aguardando conclusão</p>
                     <button type="button" className="button primary" onClick={() => {
                       selectTab("orders");
                       setPendingOnly(true);
@@ -199,11 +223,11 @@ export default function Admin() {
                   </div>
                   <div>
                     <h2>Disponibilidade</h2>
-                    <p>Revise os esgotados e atualize o rascunho.</p>
+                    <p>{demo ? "Altere as opções em estoque no cardápio publicado." : "Revise os esgotados e atualize o rascunho."}</p>
                     <button type="button" className="button secondary" onClick={() => {
-                      selectTab("products");
-                      setAvailabilityOnly(true);
-                    }}>Ver itens esgotados</button>
+                      selectTab(demo ? "availability" : "products");
+                      if (!demo) setAvailabilityOnly(true);
+                    }}>{demo ? "Abrir disponibilidade" : "Ver itens esgotados"}</button>
                   </div>
                   <div>
                     <h2>Cardápio e publicação</h2>
@@ -215,11 +239,28 @@ export default function Admin() {
               </>
             )}
             {tab === "products" && <CatalogEditor key={String(availabilityOnly)} catalog={c} change={change} outOfStockOnly={availabilityOnly} />}
-            {tab === "orders" && <Orders key={String(pendingOnly)} catalog={c} orders={orders} refresh={refresh} report={setError} pendingOnly={pendingOnly} />}
+            {tab === "availability" && published && <AvailabilityPanel catalog={published} change={(change) => void action(async () => {
+              try {
+                setPublished(await updateAvailability({ change, expectedVersion: published.version }));
+                setNotice("Disponibilidade atualizada no cardápio público.");
+              } catch (problem) {
+                setPublished(await loadCatalog());
+                throw problem;
+              }
+            })} />}
+            {tab === "orders" && <Orders key={String(pendingOnly)} catalog={published ?? c} orders={orders} refresh={refresh} report={setError} pendingOnly={pendingOnly} />}
             {tab === "appearance" && <Appearance catalog={c} change={change} preview={() => setPreview(true)} />}
-            {tab === "settings" && <SettingsPanel catalog={c} change={change} />}
+            {tab === "settings" && <SettingsPanel catalog={c} change={change} structuredHours={demo} />}
           </Suspense>
-          {catalogTab && (
+          {demo && tab === "appearance" && (
+            <section className="publish-panel">
+              <div><strong>Tema da publicação anterior</strong><p>Confira o tema anterior sobre o cardápio público atual.</p></div>
+              <button type="button" className="button secondary" disabled={busy} onClick={() => void action(async () => {
+                setThemePreview(await previewAppearance());
+              })}><Undo2 size={17} aria-hidden="true" /> Prévia do tema anterior</button>
+            </section>
+          )}
+          {!demo && catalogTab && (
             <section className="publish-panel">
               <div>
                 <strong>Versão anterior do cardápio</strong>
@@ -244,7 +285,20 @@ export default function Admin() {
       </div>
       {preview && (
         <Suspense fallback={<p role="status">Abrindo prévia…</p>}>
-          <CatalogPreview catalog={c} onClose={() => setPreview(false)} />
+          <CatalogPreview catalog={{ ...c, liveAvailability: published?.liveAvailability }} onClose={() => setPreview(false)} />
+        </Suspense>
+      )}
+      {themePreview && (
+        <Suspense fallback={<p role="status">Abrindo prévia…</p>}>
+          <CatalogPreview catalog={themePreview.catalog} title="Prévia do tema anterior" onClose={() => {
+            if (!busy) { setThemePreview(null); setError(""); }
+          }} restore={{ busy, error, onConfirm: () => void action(async () => {
+            setPublished(await restoreAppearance({
+              expectedVersion: themePreview.expectedVersion, snapshotVersion: themePreview.snapshot.version,
+            }));
+            setThemePreview(null);
+            setNotice("Tema restaurado no cardápio público. O rascunho continua como estava.");
+          }) }} />
         </Suspense>
       )}
     </div>

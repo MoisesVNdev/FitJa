@@ -1,8 +1,10 @@
 import { Leaf } from "lucide-react";
 import { type Order } from "../../../shared/domain";
+import { caruaruTimeZone } from "../../../shared/domain/hours";
 
 export const statusLabels: Record<Order["status"], string> = {
-  requested: "Solicitação criada",
+  requested: "Criado no site",
+  evaluating: "Em avaliação",
   confirmed: "Confirmado",
   completed: "Concluído",
   cancelled: "Cancelado",
@@ -14,7 +16,7 @@ export const sourceLabels: Record<Order["source"], string> = {
 };
 export const date = (value: string) =>
   new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Sao_Paulo",
+    timeZone: caruaruTimeZone,
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
@@ -28,9 +30,11 @@ export function Empty({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
-export function Status({ status }: { status: Order["status"] }) {
+export function Status({ status, source }: { status: Order["status"]; source?: Order["source"] }) {
   return (
-    <span className={`order-status ${status}`}>{statusLabels[status]}</span>
+    <span className={`order-status ${status}`}>
+      {status === "requested" && source && source !== "site" ? "Solicitação criada" : statusLabels[status]}
+    </span>
   );
 }
 

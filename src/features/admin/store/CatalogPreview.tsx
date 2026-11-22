@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import type { Catalog } from "../../../../shared/domain";
 import { Modal } from "../../../shared/ui";
 
-export default function CatalogPreview({ catalog, onClose }: {
+export default function CatalogPreview({ catalog, onClose, title = "Prévia do rascunho", restore }: {
   catalog: Catalog;
   onClose: () => void;
+  title?: string;
+  restore?: { busy: boolean; onConfirm: () => void; error: string };
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [mobile, setMobile] = useState(true);
@@ -21,15 +23,21 @@ export default function CatalogPreview({ catalog, onClose }: {
     return () => window.removeEventListener("message", receive);
   }, [catalog]);
   return (
-    <Modal title="Prévia do rascunho" wide onClose={onClose}>
+    <Modal title={title} wide onClose={onClose}>
       <div className="preview-toolbar">
         <button type="button" aria-pressed={mobile} className={`button compact ${mobile ? "primary" : "secondary"}`} onClick={() => setMobile(true)}>Celular</button>
         <button type="button" aria-pressed={!mobile} className={`button compact ${mobile ? "secondary" : "primary"}`} onClick={() => setMobile(false)}>Computador</button>
         <span>Somente prévia · sem pedidos reais</span>
       </div>
       <div className={`preview-frame ${mobile ? "mobile" : ""}`}>
-        <iframe ref={frame} src="/admin/preview" title="Cardápio com o rascunho atual" />
+        <iframe ref={frame} src="/admin/preview" title={title} />
       </div>
+      {restore && <div className="modal-footer">
+        {restore.error && <p role="alert" className="field-error">{restore.error}</p>}
+        <button className="button primary" type="button" disabled={restore.busy} onClick={restore.onConfirm}>
+          Restaurar apenas o tema
+        </button>
+      </div>}
     </Modal>
   );
 }

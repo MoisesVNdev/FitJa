@@ -1367,3 +1367,62 @@
   }
 
 }
+.hours-editor {
+  grid-column: 1 / -1;
+}
+.hours-day {
+  border: 1px solid var(--line);
+  min-inline-size: 0;
+  margin: 12px 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.hours-day legend {
+  padding-inline: 4px;
+  font-weight: 800;
+}
+.hours-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px 12px;
+}
+.hours-range .field {
+  flex: 1 1 130px;
+}
+.hours-range .text-button {
+  min-height: 44px;
+}
+.availability-panel .switch-row {
+  min-height: 44px;
+}
+.order-reference-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.order-reference-form .field {
+  margin: 0;
+  flex: 1 1 210px;
+}
+.order-check {
+  display: block;
+  margin-top: 4px;
+  color: #664515;
+}
+.order-status.evaluating {
+  background: #fff0db;
+  color: #664515;
+}
+.order-history {
+  margin: 12px 0;
+  padding-inline-start: 22px;
+}
+.order-history li {
+  margin-block: 8px;
+  overflow-wrap: anywhere;
+}
+.dashboard-toolbar > div {
+  flex-wrap: wrap;
+}

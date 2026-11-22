@@ -4,6 +4,7 @@ import { money, normalize, quoteCart, startingOffer, validPhone, type CartLine, 
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
 import { Modal } from "../../shared/ui";
 import { FeaturedProduct, ProductCard, ProductDialog } from "./ProductViews";
+import { StoreHours, useHoursStatus } from "./StoreHours";
 
 import { useTheme } from "../../shared/styles/useTheme";
 import { CartDialog, useCart } from "../cart";
@@ -46,6 +47,7 @@ export function Menu({
     }),
     [info, setInfo] = useState(false);
   useTheme(catalog);
+  const hours = useHoursStatus(catalog);
   useEffect(() => {
     if (previewCatalog) {
       setCatalog(previewCatalog);
@@ -54,6 +56,13 @@ export function Menu({
     void loadCatalog()
       .then(setCatalog)
       .catch((e) => setError(e.message));
+    function syncCatalog(event: StorageEvent) {
+      if (demo && (event.key === "fitja:published" || event.key === null)) {
+        void loadCatalog().then(setCatalog).catch((e) => setError(e.message));
+      }
+    }
+    window.addEventListener("storage", syncCatalog);
+    return () => window.removeEventListener("storage", syncCatalog);
   }, [previewCatalog]);
   useEffect(() => {
     if (!preview) void track("visit");
@@ -227,6 +236,9 @@ export function Menu({
       </header>
       <main>
         <div className="menu-shell">
+          {"exceptional" in hours && <p className="notice store-closure">
+            <span><strong>{hours.text}</strong><br />Você ainda pode enviar sua lista.</span>
+          </p>}
           {!term && featured && (
             <FeaturedProduct product={featured} catalog={c} onSelect={chooseFromCard} />
           )}
@@ -366,7 +378,7 @@ export function Menu({
           </div>
           <div>
             <strong>Estamos por aqui</strong>
-            <p>{c.hours}</p>
+            <StoreHours catalog={c} status={hours} />
             <p>{c.location}</p>
           </div>
           <div className="footer-social">{contactLinks}</div>
@@ -419,6 +431,7 @@ export function Menu({
         <CartDialog
           catalog={c}
           cart={cart}
+          hours={hours}
           setCart={setCart}
           onClose={() => setCartOpen(false)}
           onEdit={(line) => {
@@ -433,7 +446,7 @@ export function Menu({
         <Modal title="Informações da loja" onClose={() => setInfo(false)}>
           <div className="detail-content dialog-scroll">
             <h3>Horário e localização</h3>
-            <p>{c.hours}</p>
+            <StoreHours catalog={c} status={hours} />
             <p>{c.location}</p>
             <div className="footer-social">{contactLinks}</div>
             <h3>Preferências</h3>
