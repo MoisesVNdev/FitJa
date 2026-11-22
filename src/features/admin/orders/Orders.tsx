@@ -1,23 +1,26 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Download, Plus, Trash2 } from "lucide-react";
-import { available, money, normalize, quoteCart, type Catalog, type CartLine, type Order, type Product, type Quote } from "../../../../shared/domain";
+import { available, money, normalize, portionLabel, quoteCart, type Catalog, type CartLine, type Order, type Product, type Quote } from "../../../../shared/domain";
 import { cartFromQuote, csv, download, saveOrder } from "../../../shared/api/admin";
 import { Modal, Notice } from "../../../shared/ui";
 import { ProductDialog } from "../../catalog/products";
 
 import { statusLabels, sourceLabels, date, Empty, Status } from "../ui";
+import { useUnsavedChanges } from "../useUnsavedChanges";
 export default function Orders({
   catalog: c,
   orders,
   refresh,
   report,
+  pendingOnly = false,
 }: {
   catalog: Catalog;
   orders: Order[];
   refresh: () => Promise<void>;
   report: (s: string) => void;
+  pendingOnly?: boolean;
 }) {
-  const [status, setStatus] = useState("all"),
+  const [status, setStatus] = useState(pendingOnly ? "requested" : "all"),
     [search, setSearch] = useState(""),
     [editing, setEditing] = useState<Order | null | undefined>(),
     [saving, setSaving] = useState(false);
@@ -27,12 +30,15 @@ export default function Orders({
       normalize(
         `${o.reference} ${o.current.lines.map((l) => l.name).join(" ")}`,
       ).includes(normalize(search)),
-  );
+  ).sort((a, b) => Number(b.status === "requested") - Number(a.status === "requested"));
   return (
     <>
       <div className="section-toolbar">
         <div className="toolbar-inputs">
           <input
+            type="search"
+            name="order-search"
+            autoComplete="off"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar referência ou produto"
@@ -80,10 +86,10 @@ export default function Orders({
           <tbody>
             {filtered.map((o) => (
               <tr key={o.id}>
-                <td>
+                <td className="order-reference">
                   <strong>{o.reference}</strong>
                   <small>
-                    {o.current.lines.reduce((n, l) => n + l.quantity, 0)} itens
+                    {portionLabel(o.current.lines.reduce((n, l) => n + l.quantity, 0))}
                   </small>
                 </td>
                 <td>{date(o.created_at)}</td>
@@ -93,7 +99,7 @@ export default function Orders({
                 </td>
                 <td>{money(o.current.total + o.adjustment)}</td>
                 <td>
-                  <button className="text-button" onClick={() => setEditing(o)}>
+                  <button className="button secondary compact" aria-label={`Ver e atualizar ${o.reference}`} onClick={() => setEditing(o)}>
                     Ver e atualizar
                   </button>
                 </td>
@@ -156,7 +162,16 @@ function OrderEditor({
     [reason, setReason] = useState(o?.adjustment_reason || ""),
     [selected, setSelected] = useState<Product | null>(null),
     [line, setLine] = useState<CartLine | undefined>(),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [triedSave, setTriedSave] = useState(false);
+  const adjustmentField = useRef<HTMLInputElement>(null);
+  const reasonField = useRef<HTMLInputElement>(null);
+  const adjustmentError = useId();
+  const reasonError = useId();
+  const dirty = changed || status !== (o?.status || "completed") || source !== (o?.source || "counter") ||
+    notes !== (o?.notes || "") || reason !== (o?.adjustment_reason || "") ||
+    adjustment !== String((o?.adjustment || 0) / 100);
+  useUnsavedChanges(dirty);
   let q: Quote | null = o && !changed ? o.current : null,
     problem = "";
   if (changed || !o)
@@ -166,11 +181,15 @@ function OrderEditor({
       problem = (e as Error).message;
     }
   const amount = Math.round(Number(adjustment.replace(",", ".")) * 100);
+  const invalidAdjustment = !Number.isSafeInteger(amount);
+  const missingReason = !invalidAdjustment && amount !== 0 && !reason.trim();
   return (
     <Modal
       title={o ? o.reference : "Registrar venda manual"}
       wide
-      onClose={onClose}
+      onClose={() => {
+        if (!busy && (!dirty || window.confirm("Descartar as alterações ainda não salvas do pedido?"))) onClose();
+      }}
     >
       <div className="dialog-scroll">
         <div className="detail-content">
@@ -267,10 +286,14 @@ function OrderEditor({
             <label className="field">
               Ajuste negociado (R$)
               <input
+                ref={adjustmentField}
                 value={adjustment}
                 inputMode="decimal"
+                aria-invalid={triedSave && invalidAdjustment || undefined}
+                aria-describedby={triedSave && invalidAdjustment ? adjustmentError : undefined}
                 onChange={(e) => setAdjustment(e.target.value)}
               />
+              {triedSave && invalidAdjustment && <small className="field-error" id={adjustmentError}>Informe um valor válido.</small>}
               <small>
                 Use valor negativo para desconto. Frete fica fora das vendas de
                 produtos.
@@ -279,11 +302,15 @@ function OrderEditor({
             <label className="field">
               Motivo do ajuste
               <input
+                ref={reasonField}
                 value={reason}
                 maxLength={500}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Ex.: desconto combinado"
+                aria-invalid={triedSave && missingReason || undefined}
+                aria-describedby={triedSave && missingReason ? reasonError : undefined}
               />
+              {triedSave && missingReason && <small className="field-error" id={reasonError}>Informe o motivo do ajuste.</small>}
             </label>
           </div>
           <label className="field">
@@ -332,6 +359,11 @@ function OrderEditor({
           disabled={busy || !q || !cart.length}
           onClick={() => {
             setError("");
+            setTriedSave(true);
+            if (invalidAdjustment || missingReason) {
+              (invalidAdjustment ? adjustmentField : reasonField).current?.focus();
+              return;
+            }
             void onSave({
               id: o?.id,
               expectedUpdatedAt: o?.updated_at,

@@ -17,7 +17,9 @@ import {
 
 const url = import.meta.env.VITE_SUPABASE_URL,
   key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase = url && key ? createClient(url, key) : null;
+export const supabase = url && key && location.pathname !== "/admin/preview"
+  ? createClient(url, key)
+  : null;
 export const backendConfigured = !!supabase;
 export const demo =
   !supabase && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);

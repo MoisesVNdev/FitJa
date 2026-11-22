@@ -129,7 +129,7 @@ export default function Dashboard({
         <Stat
           label="Pedidos concluídos"
           value={String(completed.length)}
-          hint={`${requested.length} solicitações iniciadas no site`}
+          hint={`${requested.length} ${requested.length === 1 ? "solicitação iniciada" : "solicitações iniciadas"} no site`}
           icon={<ShoppingBag />}
         />
         <Stat

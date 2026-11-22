@@ -93,26 +93,13 @@ export default function Appearance({
             Restaurar cores e fonte da marca
           </button>
         </section>
-        <section className="admin-card appearance-sample">
-          <span className="eyebrow">UM PEDACINHO DO RESULTADO</span>
-          <h2>
-            Comida boa.
-            <br />
-            Vida mais leve.
-          </h2>
-          <p>Sabores que acompanham sua rotina, com a sua identidade.</p>
-          <div className="sample-product">
-            <img src="/media/tapioca-320.webp" alt="Tapioca" />
-            <div>
-              <span>FEITA NA HORA</span>
-              <h3>Tapioca recheada</h3>
-              <strong>A partir de R$ 9,00</strong>
-            </div>
-            <button className="button primary" onClick={preview}>
-              <Eye size={18} />
-              Ver prévia completa
-            </button>
-          </div>
+        <section className="admin-card appearance-preview">
+          <h2>Prévia do cardápio</h2>
+          <p>Confira as fotos, os destaques e as categorias com as cores e a fonte do rascunho.</p>
+          <button className="button secondary" type="button" onClick={preview}>
+            <Eye size={18} aria-hidden="true" />
+            Conferir no celular
+          </button>
         </section>
       </div>
       <section className="admin-card">

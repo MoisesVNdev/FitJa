@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -20,6 +20,7 @@ import {
 import { Modal, Notice } from "../../../shared/ui";
 import { FoodImage } from "../../catalog/products";
 import { optimizeUpload } from "./images";
+import { useUnsavedChanges } from "../useUnsavedChanges";
 
 const uid = () => crypto.randomUUID();
 const unconfirmNutrition = (variant: Variant): Variant =>
@@ -27,8 +28,9 @@ const unconfirmNutrition = (variant: Variant): Variant =>
     ? { ...variant, nutrition: { ...variant.nutrition, confirmed: false } }
     : variant;
 const cents = (s: string) => {
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  if (!/^\d+(?:[,.]\d{0,2})?$/.test(s.trim())) return NaN;
+  const n = Math.round(Number(s.replace(",", ".")) * 100);
+  return Number.isSafeInteger(n) ? n : NaN;
 };
 function Price({
   value,
@@ -40,19 +42,26 @@ function Price({
   label?: string;
 }) {
   const [text, setText] = useState((value / 100).toFixed(2).replace(".", ","));
+  const errorId = useId();
+  const invalid = !Number.isSafeInteger(cents(text));
   return (
     <label className="field">
       {label}
       <input
         inputMode="decimal"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? errorId : undefined}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(cents(e.target.value));
+        }}
         onBlur={() => {
           const n = cents(text);
-          onChange(n);
-          setText((n / 100).toFixed(2).replace(".", ","));
+          if (Number.isSafeInteger(n)) setText((n / 100).toFixed(2).replace(".", ","));
         }}
       />
+      {invalid && <small className="field-error" id={errorId}>Informe um valor válido, por exemplo 12,50.</small>}
     </label>
   );
 }
@@ -70,8 +79,20 @@ export default function ProductEditor({
   const [p, setP] = useState<Product>(structuredClone(product)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [photoError, setPhotoError] = useState(""),
+    [triedSave, setTriedSave] = useState(false),
+    [confirmDiscard, setConfirmDiscard] = useState(false),
     [nutrition, setNutrition] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const editor = useRef<HTMLDivElement>(null);
+  const continueEditing = useRef<HTMLButtonElement>(null);
+  const nameError = useId();
+  const variantErrors = useId();
+  const dirty = JSON.stringify(p) !== JSON.stringify(product);
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (confirmDiscard) continueEditing.current?.focus();
+  }, [confirmDiscard]);
   const change = <K extends keyof Product>(key: K, value: Product[K]) =>
     setP((old) => {
       const next = { ...old, [key]: value };
@@ -95,11 +116,11 @@ export default function ProductEditor({
   async function upload(file?: File) {
     if (!file) return;
     setBusy(true);
-    setError("");
+    setPhotoError("");
     try {
       change("image", await optimizeUpload(file));
     } catch (e) {
-      setError((e as Error).message);
+      setPhotoError((e as Error).message);
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -107,17 +128,18 @@ export default function ProductEditor({
   }
   function save() {
     setError("");
-    if (!p.name.trim()) {
-      setError("Informe o nome do produto.");
-      return;
-    }
+    setTriedSave(true);
     if (
+      !p.name.trim() ||
       !p.variants.length ||
       p.variants.some(
         (v) => !v.name.trim() || v.price < 0 || !Number.isSafeInteger(v.price),
-      )
+      ) ||
+      p.groups.some((group) => group.options.some((option) =>
+        option.price < 0 || !Number.isSafeInteger(option.price),
+      ))
     ) {
-      setError("Preencha opções e preços válidos.");
+      window.requestAnimationFrame(() => editor.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
     onSave(p);
@@ -126,9 +148,13 @@ export default function ProductEditor({
     <Modal
       title={product.name ? `Editar ${product.name}` : "Novo produto ou combo"}
       wide
-      onClose={onClose}
+      onClose={() => {
+        if (busy) return;
+        if (dirty) setConfirmDiscard(true);
+        else onClose();
+      }}
     >
-      <div className="dialog-scroll editor-scroll">
+      <div className="dialog-scroll editor-scroll" ref={editor}>
         <div className="editor-grid">
           <div>
             <div className="upload-preview">
@@ -154,6 +180,7 @@ export default function ProductEditor({
               <Upload size={17} />
               {p.image ? "Trocar foto" : "Adicionar foto real"}
             </button>
+            {photoError && <p className="field-error" role="alert">{photoError}</p>}
             <p className="small muted">
               Envie a foto original em JPEG, PNG ou WebP, até 15 MB. Para mostrar
               mais detalhes, prefira originais com pelo menos 1.280 px no lado
@@ -197,10 +224,14 @@ export default function ProductEditor({
               <label className="field">
                 Nome
                 <input
+                  name="product-name"
                   value={p.name}
                   maxLength={120}
+                  aria-invalid={triedSave && !p.name.trim() || undefined}
+                  aria-describedby={triedSave && !p.name.trim() ? nameError : undefined}
                   onChange={(e) => change("name", e.target.value)}
                 />
+                {triedSave && !p.name.trim() && <small id={nameError} className="field-error">Informe o nome do produto.</small>}
               </label>
               <label className="field">
                 Categoria
@@ -292,10 +323,13 @@ export default function ProductEditor({
                   <input
                     value={v.name}
                     maxLength={100}
+                    aria-invalid={triedSave && !v.name.trim() || undefined}
+                    aria-describedby={triedSave && !v.name.trim() ? `${variantErrors}-${i}` : undefined}
                     onChange={(e) =>
                       updateVariant(v.id, { name: e.target.value })
                     }
                   />
+                  {triedSave && !v.name.trim() && <small id={`${variantErrors}-${i}`} className="field-error">Informe o nome da opção.</small>}
                 </label>
                 <Price
                   value={v.price}
@@ -501,12 +535,21 @@ export default function ProductEditor({
         {error && <Notice error>{error}</Notice>}
       </div>
       <div className="modal-footer editor-footer">
-        <span className="small muted">
-          Salvar adiciona ao rascunho. Publique para atualizar o cardápio.
-        </span>
-        <button className="button primary" disabled={busy} onClick={save}>
-          Salvar produto no rascunho
-        </button>
+        {confirmDiscard ? (
+          <>
+            <strong role="alert">Alterações ainda não aplicadas ao rascunho.</strong>
+            <button type="button" className="button secondary" ref={continueEditing} onClick={() => {
+              setConfirmDiscard(false);
+              editor.current?.querySelector<HTMLInputElement>('input[name="product-name"]')?.focus();
+            }}>Continuar editando</button>
+            <button type="button" className="button secondary danger" onClick={onClose}>Descartar alterações</button>
+          </>
+        ) : (
+          <>
+            <span className="small muted">Depois de aplicar, salve o rascunho no painel.</span>
+            <button type="button" className="button primary" disabled={busy} onClick={save}>Aplicar ao rascunho</button>
+          </>
+        )}
       </div>
     </Modal>
   );

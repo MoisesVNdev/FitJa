@@ -164,7 +164,7 @@ export function Menu({
           href={`https://wa.me/${c.whatsapp}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => { if (!preview) void track("whatsapp_click"); }}
+          onClick={(event) => { if (preview) event.preventDefault(); else void track("whatsapp_click"); }}
         >
           <MessageCircle size={19} aria-hidden="true" />
           WhatsApp
@@ -175,7 +175,7 @@ export function Menu({
           href={`https://www.instagram.com/${c.instagram}/`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => { if (!preview) void track("instagram_click"); }}
+          onClick={(event) => { if (preview) event.preventDefault(); else void track("instagram_click"); }}
         >
           <Instagram size={19} aria-hidden="true" />
           Instagram
@@ -184,7 +184,7 @@ export function Menu({
     </>
   );
   return (
-    <div className={`storefront ${preview ? "preview-store" : ""} ${count && !preview ? "has-cart" : ""}`}>
+    <div className={`storefront ${preview ? "preview-store" : ""} ${count ? "has-cart" : ""}`}>
       {!preview && demo && (
         <div className="demo-strip">
           Prévia local · pedidos e alterações ficam somente neste navegador{" "}
@@ -448,7 +448,7 @@ export function Menu({
                 checked={economy}
                 onChange={(e) => {
                   setEconomy(e.target.checked);
-                  storage.set("economy", e.target.checked);
+                    if (!preview) storage.set("economy", e.target.checked);
                 }}
               />
             </label>
@@ -473,7 +473,7 @@ export function Menu({
               className="button secondary"
               onClick={() => {
                 setCart([]);
-                storage.set("cart", null);
+                if (!preview) storage.set("cart", null);
                 setToast("Sacola apagada deste navegador.");
               }}
             >

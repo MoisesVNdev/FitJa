@@ -223,3 +223,26 @@ A preparação usa a assinatura e o contato da revisão, com envio direto ao ada
 | Referência, link e cópia | Dois cliques rápidos geraram uma solicitação. Reabrir e preparar a mesma seleção devolveu a mesma referência. O link curto reproduziu o resumo integral com preferência e observação. Dez montagens fictícias produziram um link apenas para a conversa. O texto passado à operação de cópia, capturada por um substituto descartável da área de transferência, coincidiu integralmente com o resumo. [Resumo](../../artifacts/etapa-04-sacola-mobile/resumo-390.png) · [Resumo longo](../../artifacts/etapa-04-sacola-mobile/resumo-longo-390.png) |
 
 `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. O teste de contrato conferiu que preparar não repete a leitura de catálogo. A sintaxe TypeScript da função legada foi verificada localmente. Deno, Supabase e Turnstile reais, teclado em aparelhos físicos e envio pelo WhatsApp continuam no aceite de homologação.
+
+## Etapa 05 do roteiro móvel · Painel da proprietária em notebook
+
+A visão geral dá acesso direto à fila de solicitações e ao filtro de esgotados. A lista de pedidos mantém busca por referência ou produto, estado e ação por linha. O cardápio distingue o primeiro destaque e permite priorizar outro destaque elegível. O controle de disponibilidade altera o rascunho. A operação independente de publicação permanece na etapa 07.
+
+Aplicar as mudanças do editor, salvar o rascunho e publicar são ações distintas. O editor indica campos inválidos e avisa antes de descartar alterações. A saída do painel com edição pendente usa o aviso nativo do navegador. A restauração existente recupera o catálogo completo.
+
+A prévia monta o mesmo `Menu` público em um documento próprio, em `/admin/preview`. Ela recebe o rascunho somente da janela pai, por mensagens validadas pela origem e pelo remetente. O modo celular dá ao cardápio um viewport de 390 px nos notebooks ensaiados. A fonte, a escala e as cores do catálogo são aplicadas dentro do quadro. A prévia pode abrir fichas e simular a sacola com estado descartável. Ela não grava pedidos, eventos nem preferências no armazenamento da loja.
+
+As regras legadas de hospedagem permitem o enquadramento de mesma origem somente em `/admin/preview` e mantêm as outras páginas protegidas contra enquadramento. A hospedagem futura deve reproduzir essa exceção e incluir a rota na área administrativa quando usar Access. [Regras de cabeçalhos no Cloudflare Pages](https://developers.cloudflare.com/pages/configuration/headers/#detach-a-header)
+
+### Aceite da etapa
+
+**Aprovado localmente** no Chrome 158 com perfil descartável, dados fictícios e prévia do build de produção.
+
+| Cenário | Resultado e evidências |
+| --- | --- |
+| 1366 × 768 | Localizou o pedido fictício pela referência na fila de conferência e abriu seus dados. Duplicou a coxinha, alterou o preço inicial para R$ 12,50, enviou uma foto fictícia e a priorizou na vitrine. [Antes](../../artifacts/etapa-05-painel-notebook/antes-1366.png) · [Painel](../../artifacts/etapa-05-painel-notebook/painel-1366.png) · [Pedido](../../artifacts/etapa-05-painel-notebook/pedido-1366.png) |
+| 1280 × 720 | Repetiu o fluxo com outro produto fictício e conferiu as ações separadas de prévia, rascunho e publicação. [Antes](../../artifacts/etapa-05-painel-notebook/antes-1280.png) · [Painel](../../artifacts/etapa-05-painel-notebook/painel-1280.png) · [Pedido](../../artifacts/etapa-05-painel-notebook/pedido-1280.png) · [Ações de catálogo](../../artifacts/etapa-05-painel-notebook/acoes-rascunho-1280.png) |
+| Edição sem salvar | Nome vazio exibiu o erro no próprio campo. Fechar ofereceu continuar editando ou descartar. O navegador sinalizou edição pendente. O aviso deixou de bloquear a saída após salvar o rascunho. [Editor](../../artifacts/etapa-05-painel-notebook/editor-aviso-1366.png) |
+| Prévia e publicação | Antes de publicar, a cópia existia apenas no rascunho. Em ambos os tamanhos, a prévia a 390 px e a rota pública em outra aba após publicação local coincidiram em destaque, foto, preço, ordem das categorias, fonte Manrope e cor do rascunho. O painel manteve o tema próprio. [Prévia em 1366](../../artifacts/etapa-05-painel-notebook/previa-1366.png) · [Publicação em 1366](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1366.png) · [Prévia em 1280](../../artifacts/etapa-05-painel-notebook/previa-1280.png) · [Publicação em 1280](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1280.png) |
+
+Com cache desativado, a rota pública em outra aba não solicitou os módulos de administração, os estilos administrativos nem os módulos de prévia. A revisão com `web-design-guidelines` cobriu navegação, nomes dos controles, indicação de estado, campos com erro e aviso de saída. `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. A aplicação efetiva dos cabeçalhos e o acesso administrativo na hospedagem permanecem para homologação.

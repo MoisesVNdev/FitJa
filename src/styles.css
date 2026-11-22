@@ -282,6 +282,9 @@ fieldset {
   margin-inline: auto;
   background: var(--page);
 }
+html:has(.preview-store) {
+  scrollbar-width: none;
+}
 .site-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
