@@ -3,7 +3,7 @@ import { validPhone, type CartLine, type Catalog, type Order } from "../../../sh
 import type { CheckoutApi, Fulfillment } from "../../../shared/contracts/checkout";
 import { loadCatalog, submitOrder, track } from "../../shared/api/checkout";
 import { storage } from "../../shared/api/catalog";
-import { checkoutNotes, createRequest, describeChanges, inspectSelection, isCatalogConflict, reviewSelection } from "./service";
+import { checkoutNotes, createRequest, describeChanges, inspectSelection, isCatalogConflict, missingWhatsApp, reviewSelection } from "./service";
 
 const checkoutApi: CheckoutApi = { loadCatalog, submitOrder };
 
@@ -66,7 +66,11 @@ export function useCheckout(c: Catalog, cart: CartLine[], preview: boolean, onRe
         Object.keys(lineChanges).length > 0;
       onReload(next.catalog);
       setChanges(lineChanges);
-      if (changed) setError("O cardápio mudou. Confira os itens indicados na sacola.");
+      if (changed) {
+        setError("O cardápio mudou. Confira os itens indicados na sacola.");
+      } else if (!validPhone(next.catalog.whatsapp)) {
+        setError(missingWhatsApp);
+      }
       if (step === "review" && !changed && next.quote && validPhone(next.catalog.whatsapp)) {
         setReview({ revision: startedRevision, signature: next.quote.signature, whatsapp: next.catalog.whatsapp });
       } else {

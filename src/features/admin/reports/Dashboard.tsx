@@ -108,16 +108,18 @@ export default function Dashboard({
           icon={<Eye />}
         />
       </div>
-      <section className="admin-card table-scroll">
+      <section className="admin-card">
         <h2>Vendas por origem</h2>
-        <table className="data-table">
-          <thead><tr><th scope="col">Origem</th><th scope="col">Pedidos concluídos</th><th scope="col">Vendas</th></tr></thead>
-          <tbody>
-            {(Object.keys(sourceLabels) as Order["source"][]).filter((source) => origin === "all" || source === origin).map((source) => (
-              <tr key={source}><th scope="row">{sourceLabels[source]}</th><td>{report.byOrigin[source].count}</td><td>{money(report.byOrigin[source].total)}</td></tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead><tr><th scope="col">Origem</th><th scope="col">Pedidos concluídos</th><th scope="col">Vendas</th></tr></thead>
+            <tbody>
+              {(Object.keys(sourceLabels) as Order["source"][]).filter((source) => origin === "all" || source === origin).map((source) => (
+                <tr key={source}><th scope="row">{sourceLabels[source]}</th><td>{report.byOrigin[source].count}</td><td>{money(report.byOrigin[source].total)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
       <div className="dashboard-columns">
         <section className="admin-card">
