@@ -1,14 +1,17 @@
-import { type Catalog } from "../../../../shared/domain";
+import { validPhone, type Catalog } from "../../../../shared/domain";
+import { formatNational, nationalDigits, storedFromInput } from "../../../shared/phone";
 import HoursEditor from "./HoursEditor";
 
 export default function SettingsPanel({
   catalog: c,
   change,
   structuredHours,
+  publishedWhatsapp,
 }: {
   catalog: Catalog;
   change: (c: Catalog) => void;
   structuredHours: boolean;
+  publishedWhatsapp?: string;
 }) {
   return (
     <div className="settings-grid">
@@ -24,10 +27,15 @@ export default function SettingsPanel({
           <label className="field" key={key}>
             {label}
             <input
-              maxLength={key === "name" ? 120 : 500}
+              maxLength={key === "name" ? 120 : key === "tagline" ? 40 : 500}
               value={c[key]}
               onChange={(e) => change({ ...c, [key]: e.target.value })}
             />
+            {key === "tagline" && (
+              <small className="muted">
+                {c.tagline.length}/40 caracteres. Aparece numa linha só no topo do cardápio; o tamanho da letra se ajusta sozinho.
+              </small>
+            )}
           </label>
         ))}
         {!structuredHours && <label className="field">Horários de atendimento
@@ -39,16 +47,24 @@ export default function SettingsPanel({
         <h2>Contatos e destaque</h2>
         <label className="field">
           WhatsApp de pedidos
-          <input
-            value={c.whatsapp}
-            inputMode="tel"
-            placeholder="55 + DDD + número"
-            maxLength={13}
-            onChange={(e) =>
-              change({ ...c, whatsapp: e.target.value.replace(/\D/g, "") })
-            }
-          />
-          <small>Somente números. Exemplo de formato: 5511999999999.</small>
+          <span className="phone-input">
+            <span className="phone-prefix" aria-hidden="true">+55</span>
+            <input
+              value={formatNational(nationalDigits(c.whatsapp))}
+              inputMode="tel"
+              autoComplete="tel-national"
+              placeholder="(81) 99999-9999"
+              maxLength={16}
+              aria-describedby="whatsapp-help"
+              onChange={(e) => change({ ...c, whatsapp: storedFromInput(e.target.value) })}
+            />
+          </span>
+          <small id="whatsapp-help">
+            O +55 (Brasil) já é automático: digite só o DDD e o número.
+            {c.whatsapp && !validPhone(c.whatsapp) && " Faltam dígitos: use DDD + 8 ou 9 dígitos."}
+            {c.whatsapp && validPhone(c.whatsapp) && c.whatsapp !== publishedWhatsapp &&
+              " Para o cardápio usar este número, clique em Publicar cardápio (salvar rascunho não basta)."}
+          </small>
         </label>
         <label className="field">
           Usuário do Instagram

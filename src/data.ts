@@ -424,6 +424,19 @@ export const initialCatalog: Catalog = {
   whatsapp: "",
   instagram: "",
   hours: "",
+  // Horário informado pela Laís: segunda a sexta, dois turnos. Sábado e domingo fechados.
+  storeHours: {
+    days: {
+      mon: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      tue: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      wed: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      thu: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      fri: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      sat: [],
+      sun: [],
+    },
+    closures: [],
+  },
   location: "Na Academia Goldbox",
   banner: "Mais praticidade, mais sabor, mais Fit Já.",
   bannerEnabled: true,

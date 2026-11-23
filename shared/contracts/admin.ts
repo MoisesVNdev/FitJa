@@ -38,7 +38,7 @@ export type OrderFilters = {
   period?: ReportPeriod;
 };
 
-export type ReportPeriod = "week" | "month";
+export type ReportPeriod = "week" | "month" | "quarter";
 export type SalesReport = {
   pending: number;
   accepted: number;

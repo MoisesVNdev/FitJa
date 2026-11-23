@@ -1,7 +1,7 @@
 import { observeIdentity, signOut } from "../../shared/api/identity";
 import "./admin.css";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Check, ExternalLink, Eye, LayoutDashboard, Leaf, LogOut, Package, Palette, Save, Settings, ShoppingBag, Undo2 } from "lucide-react";
+import { Check, ExternalLink, Eye, LayoutDashboard, Leaf, LogOut, Megaphone, Package, Palette, Save, Settings, ShoppingBag, Undo2 } from "lucide-react";
 import { validateCatalog, type Catalog, type Order } from "../../../shared/domain";
 import { isPending } from "../../../shared/domain/orders";
 import type { AppearancePreview } from "../../../shared/contracts/operations";
@@ -13,17 +13,19 @@ const Login = lazy(() => import("./auth/Login"));
 const Dashboard = lazy(() => import("./reports/Dashboard"));
 const CatalogEditor = lazy(() => import("./catalog/CatalogEditor"));
 const Appearance = lazy(() => import("./store/Appearance"));
+const HighlightsEditor = lazy(() => import("./store/HighlightsEditor"));
 const SettingsPanel = lazy(() => import("./store/SettingsPanel"));
 const Orders = lazy(() => import("./orders/Orders"));
 const CatalogPreview = lazy(() => import("./store/CatalogPreview"));
 const AvailabilityPanel = lazy(() => import("./store/AvailabilityPanel"));
 
-type Tab = "dashboard" | "products" | "orders" | "appearance" | "settings" | "availability";
+type Tab = "dashboard" | "products" | "orders" | "appearance" | "highlights" | "settings" | "availability";
 const tabItems: { id: Tab; name: string; icon: typeof Leaf }[] = [
   { id: "dashboard", name: "Visão geral", icon: LayoutDashboard },
   { id: "orders", name: "Pedidos", icon: ShoppingBag },
   { id: "products", name: "Cardápio", icon: Package },
   { id: "availability", name: "Disponibilidade", icon: Check },
+  { id: "highlights", name: "Destaques", icon: Megaphone },
   { id: "appearance", name: "Aparência", icon: Palette },
   { id: "settings", name: "Configurações", icon: Settings },
 ];
@@ -133,7 +135,7 @@ export default function Admin() {
     return <main className="loading">{error ? <Notice error>{error}</Notice> : "Carregando painel…"}</main>;
   }
   const c = catalog;
-  const catalogTab = tab === "products" || tab === "appearance" || tab === "settings";
+  const catalogTab = tab === "products" || tab === "appearance" || tab === "highlights" || tab === "settings";
   const pendingCount = orders.filter(isPending).length;
   const acceptedCount = orders.filter((order) => order.status === "confirmed").length;
 
@@ -182,7 +184,7 @@ export default function Admin() {
               <button type="button" className="button secondary compact" disabled={busy} onClick={() => void action(async () => {
                 await saveDraft(c);
                 setSavedDraft(c);
-                setNotice("Rascunho salvo. O cardápio público continua como estava.");
+                setNotice(c.whatsapp !== published?.whatsapp || c.name !== published?.name ? "Rascunho salvo. O cardápio público só muda ao clicar em Publicar cardápio (o WhatsApp, por exemplo, só vale depois de publicar)." : "Rascunho salvo. O cardápio público continua como estava.");
               })}>
                 <Save size={17} aria-hidden="true" /> Salvar rascunho
               </button>
@@ -250,7 +252,8 @@ export default function Admin() {
             })} />}
             {tab === "orders" && <Orders key={String(pendingOnly)} catalog={published ?? c} orders={orders} refresh={refresh} report={setError} pendingOnly={pendingOnly} />}
             {tab === "appearance" && <Appearance catalog={c} change={change} preview={() => setPreview(true)} />}
-            {tab === "settings" && <SettingsPanel catalog={c} change={change} structuredHours={demo} />}
+            {tab === "highlights" && <HighlightsEditor catalog={c} change={change} />}
+            {tab === "settings" && <SettingsPanel catalog={c} change={change} structuredHours={demo} publishedWhatsapp={published?.whatsapp} />}
           </Suspense>
           {demo && tab === "appearance" && (
             <section className="publish-panel">

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, ShoppingBag, X } from "lucide-react";
-import { money, normalize, quoteCart, startingOffer, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, X } from "lucide-react";
+import { highlightVisible, money, normalize, quoteCart, startingOffer, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
+import { caruaruDate } from "../../../shared/domain/hours";
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
-import { Modal } from "../../shared/ui";
-import { FeaturedProduct, ProductCard, ProductDialog } from "./ProductViews";
+import { BagIcon, Modal } from "../../shared/ui";
+import { ProductCard, ProductDialog } from "./ProductViews";
+import { HighlightCarousel } from "./HighlightCarousel";
 import { StoreHours, useHoursStatus } from "./StoreHours";
 
 import { useTheme } from "../../shared/styles/useTheme";
@@ -103,9 +105,11 @@ export function Menu({
     );
   const c = catalog,
     count = cart.reduce((n, l) => n + l.quantity, 0),
-    featured = c.products.find(
-      (p) => p.featured && startingOffer(c, p),
-    );
+    featuredProducts = c.products
+      .filter((p) => p.featured && !p.archived && startingOffer(c, p))
+      .slice(0, 5),
+    today = caruaruDate(new Date()).date,
+    notices = (c.highlights ?? []).filter((item) => highlightVisible(item, today));
   let total: number | null = null;
   try {
     if (cart.length) total = quoteCart(c, cart).total;
@@ -161,6 +165,12 @@ export function Menu({
     if (term) setSearchCategory(id);
     else setBrowseCategory(id);
   }
+  function submitSearch(e: FormEvent) {
+    // Tocar na lupa do teclado fecha o teclado e leva o cliente aos resultados.
+    e.preventDefault();
+    searchInput.current?.blur();
+    document.querySelector(".search-summary, .category-section")?.scrollIntoView({ block: "start" });
+  }
   function clearSearch() {
     setQuery("");
     setSearchCategory(null);
@@ -211,7 +221,10 @@ export function Menu({
       <header className="site-header">
         <div className="brand">
           <img src="/media/logo.webp" width="52" height="52" alt="" />
-          <h1 translate="no">{c.name}</h1>
+          <div>
+            <h1 translate="no">{c.name}</h1>
+            {c.tagline && <small className="brand-tagline">{c.tagline}</small>}
+          </div>
         </div>
         <div className="header-actions">
           <button
@@ -228,9 +241,13 @@ export function Menu({
             onClick={() => setCartOpen(true)}
             aria-label={`Abrir sacola com ${count} ${count === 1 ? "item" : "itens"}`}
           >
-            <ShoppingBag size={19} aria-hidden="true" />
+            <span className="cart-icon">
+              <BagIcon size={24} />
+              {count > 0 && (
+                <span key={count} className="cart-badge">{count}</span>
+              )}
+            </span>
             <span>Sacola</span>
-            {count > 0 && <b>{count}</b>}
           </button>
         </div>
       </header>
@@ -239,16 +256,17 @@ export function Menu({
           {"exceptional" in hours && <p className="notice store-closure">
             <span><strong>{hours.text}</strong><br />Você ainda pode enviar sua lista.</span>
           </p>}
-          {!term && featured && (
-            <FeaturedProduct product={featured} catalog={c} onSelect={chooseFromCard} />
+          {!term && (featuredProducts.length > 0 || notices.length > 0) && (
+            <HighlightCarousel products={featuredProducts} notices={notices} catalog={c} onSelect={chooseFromCard} />
           )}
-          <div className="search-box">
+          <form className="search-box" role="search" onSubmit={submitSearch}>
             <Search size={20} aria-hidden="true" />
             <input
               id="menu-start"
               ref={searchInput}
               name="query"
               type="search"
+              enterKeyHint="search"
               autoComplete="off"
               value={query}
               onChange={(e) => {
@@ -268,7 +286,7 @@ export function Menu({
                 <X size={18} aria-hidden="true" />
               </button>
             )}
-          </div>
+          </form>
           <nav
             className="category-nav"
             aria-label={term ? "Filtrar resultados por categoria" : "Categorias do cardápio"}
@@ -368,6 +386,20 @@ export function Menu({
         </div>
       </main>
       <footer className="site-footer">
+        <ul className="trust-badges">
+          <li>
+            <Leaf size={22} aria-hidden="true" />
+            <span><strong>Comida saudável</strong><span>Para uma vida leve</span></span>
+          </li>
+          <li>
+            <BagIcon size={22} />
+            <span><strong>Entrega ou retirada</strong><span>Você escolhe na sacola</span></span>
+          </li>
+          <li>
+            <MessageCircle size={22} aria-hidden="true" />
+            <span><strong>Pedido pelo WhatsApp</strong><span>A Laís confirma com você</span></span>
+          </li>
+        </ul>
         <div className="footer-top">
           <div>
             <a className="brand" href="#">
@@ -402,7 +434,7 @@ export function Menu({
         <div className="floating-cart">
           <button onClick={() => setCartOpen(true)}>
             <span className="floating-count">
-              <ShoppingBag size={19} aria-hidden="true" />
+              <BagIcon size={22} />
               {count}
             </span>
             <strong>Ver minha sacola</strong>

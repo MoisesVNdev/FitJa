@@ -23,8 +23,12 @@ export const supabase = url && key && location.pathname !== "/admin/preview"
   ? createClient(url, key)
   : null;
 export const backendConfigured = !!supabase;
+// Redes privadas (Wi-Fi de casa ou do escritório). Só valem no servidor de desenvolvimento do Vite.
+const privateNetworkHost = /^(10\.\d{1,3}|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/;
 export const demo =
-  !supabase && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  !supabase &&
+  (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ||
+    (import.meta.env.DEV && privateNetworkHost.test(location.hostname)));
 const storage = {
   get<T>(key: string, fallback: T): T {
     try {

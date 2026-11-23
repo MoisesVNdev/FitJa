@@ -26,7 +26,12 @@ function periodStart(period: ReportPeriod, now: Date) {
   const today = caruaruDate(now).date;
   const day = new Date(`${today}T00:00:00Z`);
   day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
-  return period === "week" ? day.toISOString().slice(0, 10) : `${today.slice(0, 7)}-01`;
+  if (period === "week") return day.toISOString().slice(0, 10);
+  if (period === "month") return `${today.slice(0, 7)}-01`;
+  // Trimestre móvel: do primeiro dia do mês de dois meses atrás até hoje (3 meses-calendário).
+  const first = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+  first.setUTCMonth(first.getUTCMonth() - 2);
+  return first.toISOString().slice(0, 10);
 }
 
 function orderDate(order: Order) {

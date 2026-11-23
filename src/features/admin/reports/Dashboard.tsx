@@ -4,7 +4,7 @@ import { money, type Order } from "../../../../shared/domain";
 import { caruaruDate, caruaruTimeZone } from "../../../../shared/domain/hours";
 import { filterOrders, salesReport } from "../../../../shared/domain/orders";
 import type { ReportPeriod } from "../../../../shared/contracts/admin";
-import { csv, download, type EventRow } from "../../../shared/api/admin";
+import { clearDemoData, csv, demo, download, hasDemoData, seedDemoData, type EventRow } from "../../../shared/api/admin";
 
 import { sourceLabels, date, Empty, Status } from "../ui";
 export default function Dashboard({
@@ -24,35 +24,39 @@ export default function Dashboard({
   const scoped = origin === "all" ? orders : orders.filter((order) => order.source === origin);
   const report = salesReport(scoped, period, now);
   const completed = filterOrders(scoped, { status: "completed", source: "all", search: "", period }, now);
-  const ev = events.filter((e) => +new Date(e.created_at) >= +now - 7 * 86400000),
+  const windowDays = period === "week" ? 7 : period === "month" ? 30 : 90;
+  const ev = events.filter((e) => +new Date(e.created_at) >= +now - windowDays * 86400000),
     visits = new Set(
       ev.filter((e) => e.name === "visit").map((e) => e.session_id),
     ).size;
   const ranking = report.products;
   const max = Math.max(1, ...ranking.map((item) => item.quantity));
   const recent = filterOrders(scoped, { status: "completed", source: "all", search: "" }, now);
-  const bars = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(+now - (6 - i) * 86400000),
-      day = caruaruDate(d).date,
-      value = recent
-        .filter(
-          (o) =>
-            caruaruDate(new Date(o.completed_at || o.updated_at)).date === day,
-        )
-        .reduce((n, o) => n + o.current.total + o.adjustment, 0);
-    return {
-      label: new Intl.DateTimeFormat("pt-BR", {
-        weekday: "short",
-        timeZone: caruaruTimeZone,
+  const orderDay = (o: Order) => caruaruDate(new Date(o.completed_at || o.updated_at)).date;
+  const total = (o: Order) => o.current.total + o.adjustment;
+  // Semana e mês: últimos 7 dias, um por barra. Três meses: 13 semanas, uma por barra.
+  const bars = period === "quarter"
+    ? Array.from({ length: 13 }, (_, i) => {
+        const end = new Date(+now - (12 - i) * 7 * 86400000),
+          last = caruaruDate(end).date,
+          first = caruaruDate(new Date(+end - 6 * 86400000)).date;
+        return {
+          label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: caruaruTimeZone }).format(end),
+          value: recent.filter((o) => orderDay(o) >= first && orderDay(o) <= last).reduce((n, o) => n + total(o), 0),
+        };
       })
-        .format(d)
-        .replace(".", ""),
-      value,
-    };
-  });
+    : Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(+now - (6 - i) * 86400000),
+          day = caruaruDate(d).date;
+        return {
+          label: new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: caruaruTimeZone }).format(d).replace(".", ""),
+          value: recent.filter((o) => orderDay(o) === day).reduce((n, o) => n + total(o), 0),
+        };
+      });
   const barMax = Math.max(1, ...bars.map((x) => x.value));
   return (
     <>
+      {demo && <DemoDataCard refresh={refresh} />}
       <div className="dashboard-toolbar">
         <span>
           <span className="status-dot" />
@@ -66,6 +70,7 @@ export default function Dashboard({
           >
             <option value="week">Esta semana</option>
             <option value="month">Este mês</option>
+            <option value="quarter">Últimos 3 meses</option>
           </select>
           <select aria-label="Origem das vendas" value={origin} onChange={(event) => setOrigin(event.target.value as typeof origin)}>
             <option value="all">Todas as origens</option>
@@ -104,7 +109,7 @@ export default function Dashboard({
         <Stat
           label="Acessos aproximados"
           value={String(visits)}
-          hint={`Últimos 7 dias · ${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
+          hint={`Últimos ${windowDays} dias · ${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
           icon={<Eye />}
         />
       </div>
@@ -125,8 +130,8 @@ export default function Dashboard({
         <section className="admin-card">
           <div className="card-heading">
             <div>
-              <h2>Uma semana de sabores</h2>
-              <p>Valores concluídos · últimos 7 dias</p>
+              <h2>{period === "quarter" ? "Três meses de sabores" : "Uma semana de sabores"}</h2>
+              <p>{period === "quarter" ? "Valores concluídos · por semana, últimas 13 semanas" : "Valores concluídos · últimos 7 dias"}</p>
             </div>
             <span className="chart-legend">Vendas registradas</span>
           </div>
@@ -253,6 +258,54 @@ export default function Dashboard({
         afetados por bloqueadores. Eventos disponíveis por até 90 dias.
       </p>
     </>
+  );
+}
+function DemoDataCard({ refresh }: { refresh: () => Promise<void> }) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const present = hasDemoData();
+  function run(action: () => string) {
+    setError("");
+    try {
+      setMessage(action());
+    } catch (problem) {
+      setMessage("");
+      setError((problem as Error).message);
+    }
+  }
+  return (
+    <section className="admin-card demo-data-card" aria-label="Dados fictícios de demonstração">
+      <div>
+        <h2>Dados de demonstração</h2>
+        <p className="muted">
+          {present
+            ? "Há 3 meses de pedidos e acessos fictícios neste navegador. Eles não são vendas reais."
+            : "Preencha o painel com 3 meses de pedidos e acessos fictícios para ver como os números aparecem. Também define o horário comercial: segunda a sexta, 8h–13h30 e 16h30–20h30."}
+        </p>
+      </div>
+      <div className="appearance-actions">
+        <button className="button primary compact" type="button" onClick={() => {
+          if (present && !window.confirm("Gerar novamente? Os dados fictícios atuais serão substituídos (pedidos reais não são apagados).")) return;
+          run(() => {
+            const result = seedDemoData();
+            void refresh();
+            return `Pronto: ${result.orders} pedidos e ${result.events} eventos fictícios. Recarregue a página para atualizar também os horários.`;
+          });
+        }}>{present ? "Gerar de novo" : "Gerar 3 meses de dados"}</button>
+        {present && (
+          <button className="button secondary compact" type="button" onClick={() => {
+            if (!window.confirm("Apagar somente os dados fictícios? Pedidos reais ficam.")) return;
+            run(() => {
+              const result = clearDemoData();
+              void refresh();
+              return `Removidos ${result.orders} pedidos e ${result.events} eventos fictícios.`;
+            });
+          }}>Apagar dados fictícios</button>
+        )}
+      </div>
+      {message && <p role="status" className="small">{message}</p>}
+      {error && <p role="alert" className="small danger">{error}</p>}
+    </section>
   );
 }
 function HeartIcon() {

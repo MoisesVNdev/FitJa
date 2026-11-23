@@ -83,6 +83,7 @@ export function FeaturedProduct({
         <FoodImage image={product.image} name={product.name} economy eager />
       </div>
       <div className="featured-details">
+        <span className="featured-tag">Destaque da casa</span>
         <h2>{product.name}</h2>
         <p>{variantLabel(product, offer.variant)}</p>
         <div className="featured-controls">

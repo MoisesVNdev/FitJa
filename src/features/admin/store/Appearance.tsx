@@ -1,8 +1,24 @@
-import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Eye, Plus, Trash2, Undo2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Eye, History, Plus, RotateCcw, Trash2, Undo2 } from "lucide-react";
 import { validateCatalog, type Catalog } from "../../../../shared/domain";
-import { initialCatalog } from "../../../data";
 import { Notice } from "../../../shared/ui";
+import {
+  appearanceOf, applyAppearance, factoryAppearance, loadHistory, pushHistory, restoreFromHistory,
+  sameAppearance, saveHistory, type AppearanceState, type HistoryEntry,
+} from "./appearanceHistory";
+
+const when = (iso: string) =>
+  new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Recife" }).format(new Date(iso));
+
+function Swatches({ state }: { state: AppearanceState }) {
+  const { theme, categories } = state;
+  const colors = [theme.primary, theme.primaryText, theme.background, theme.surface, theme.text, ...categories.map((x) => x.color)];
+  return (
+    <span className="swatches" aria-hidden="true">
+      {colors.map((color, i) => <i key={i} style={{ background: color }} />)}
+    </span>
+  );
+}
 
 export default function Appearance({
   catalog: c,
@@ -13,8 +29,40 @@ export default function Appearance({
   change: (c: Catalog) => void;
   preview: () => void;
 }) {
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  const lastEdit = useRef(0);
+  const current = appearanceOf(c);
+  const remember = (state: AppearanceState, list = history) => {
+    const next = pushHistory(list, { at: new Date().toISOString(), state });
+    saveHistory(next);
+    setHistory(next);
+  };
+  // Cada sequência de ajustes (arrastar uma cor, por exemplo) guarda UMA versão anterior.
+  function apply(next: Catalog) {
+    const after = appearanceOf(next);
+    if (!sameAppearance(current, after)) {
+      const now = Date.now();
+      if (now - lastEdit.current > 2500) remember(current);
+      lastEdit.current = now;
+    }
+    change(next);
+  }
+  function restore(index: number) {
+    const result = restoreFromHistory(history, index, current);
+    if (!result) return;
+    saveHistory(result.history);
+    setHistory(result.history);
+    lastEdit.current = 0;
+    change(applyAppearance(c, result.state));
+  }
+  function factory(scope: "all" | "categories") {
+    const base = factoryAppearance();
+    remember(current);
+    lastEdit.current = 0;
+    change(applyAppearance(c, scope === "all" ? base : { ...current, categories: base.categories }));
+  }
   function theme(key: keyof Catalog["theme"], value: string | number) {
-    change({ ...c, theme: { ...c.theme, [key]: value } });
+    apply({ ...c, theme: { ...c.theme, [key]: value } });
   }
   function move(i: number, delta: number) {
     const cats = [...c.categories];
@@ -85,13 +133,20 @@ export default function Appearance({
             <small>A escala mantém os textos legíveis em qualquer tela.</small>
           </label>
           {problem && <Notice error>{problem}</Notice>}
-          <button
-            className="button secondary"
-            onClick={() => change({ ...c, theme: initialCatalog.theme })}
-          >
-            <Undo2 size={16} />
-            Restaurar cores e fonte da marca
-          </button>
+          <div className="appearance-actions">
+            <button className="button secondary" type="button" onClick={() => factory("all")}>
+              <RotateCcw size={16} aria-hidden="true" />
+              Restaurar padrão de fábrica
+            </button>
+            <button className="button secondary" type="button" disabled={!history.length} onClick={() => restore(0)}>
+              <Undo2 size={16} aria-hidden="true" />
+              Voltar à versão anterior
+            </button>
+          </div>
+          <small className="muted">
+            O padrão de fábrica é o laranja e o verde da marca, com a fonte original. Nada é perdido: a versão que
+            estava valendo entra no histórico.
+          </small>
         </section>
         <section className="admin-card appearance-preview">
           <h2>Prévia do cardápio</h2>
@@ -108,6 +163,15 @@ export default function Appearance({
             <h2>Categorias e seções</h2>
             <p>Escolha a ordem, o nome e as cores de cada parte do cardápio.</p>
           </div>
+          <div className="appearance-actions">
+          <button className="button secondary compact" type="button" onClick={() => factory("categories")}>
+            <RotateCcw size={16} aria-hidden="true" />
+            Cores padrão das seções
+          </button>
+          <button className="button secondary compact" type="button" disabled={!history.length} onClick={() => restore(0)}>
+            <Undo2 size={16} aria-hidden="true" />
+            Voltar à versão anterior
+          </button>
           <button
             className="button secondary compact"
             onClick={() =>
@@ -128,6 +192,7 @@ export default function Appearance({
             <Plus size={16} />
             Categoria
           </button>
+          </div>
         </div>
         {c.categories.map((cat, i) => (
           <div className="category-editor" key={cat.id}>
@@ -150,7 +215,7 @@ export default function Appearance({
                 type="color"
                 value={cat.color}
                 onChange={(e) =>
-                  change({
+                  apply({
                     ...c,
                     categories: c.categories.map((x) =>
                       x.id === cat.id ? { ...x, color: e.target.value } : x,
@@ -165,7 +230,7 @@ export default function Appearance({
                 type="color"
                 value={cat.textColor}
                 onChange={(e) =>
-                  change({
+                  apply({
                     ...c,
                     categories: c.categories.map((x) =>
                       x.id === cat.id ? { ...x, textColor: e.target.value } : x,
@@ -209,6 +274,34 @@ export default function Appearance({
             </button>
           </div>
         ))}
+      </section>
+      <section className="admin-card">
+        <div className="card-heading">
+          <div>
+            <h2>Histórico de cores</h2>
+            <p>As últimas {history.length || 5} versões de cores e fonte, da mais recente para a mais antiga.</p>
+          </div>
+          <History size={22} aria-hidden="true" />
+        </div>
+        {history.length ? (
+          <ul className="history-list">
+            {history.map((entry, index) => (
+              <li key={entry.at + index}>
+                <div>
+                  <strong>{index === 0 ? "Versão anterior" : `Há ${index + 1} versões`}</strong>
+                  <small>{when(entry.at)} · fonte {entry.state.theme.font}</small>
+                  <Swatches state={entry.state} />
+                </div>
+                <button className="button secondary compact" type="button" onClick={() => restore(index)}>
+                  <Undo2 size={16} aria-hidden="true" />
+                  Restaurar
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted">Ainda não há versões anteriores. Elas aparecem aqui quando você mudar uma cor.</p>
+        )}
       </section>
     </>
   );

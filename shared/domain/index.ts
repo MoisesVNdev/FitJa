@@ -82,6 +82,27 @@ export type Theme = {
   font: "Nunito Sans" | "DM Sans" | "Manrope";
   scale: number;
 };
+// Aviso do carrossel de destaques (feriado, horário, promoção). Pode ter só imagem.
+// Os produtos em destaque continuam vindo do campo `featured` de cada produto.
+export type Highlight = {
+  id: string;
+  title: string;
+  text: string;
+  /** data URL (demonstração) ou caminho/URL público (servidor final). */
+  image?: string;
+  active: boolean;
+  /** AAAA-MM-DD, hora de Caruaru. Vazio = sem limite. */
+  from?: string;
+  until?: string;
+};
+export const highlightImageLimits = {
+  width: 1200,
+  height: 600,
+  maxBytes: 300 * 1024,
+  types: ["image/jpeg", "image/png", "image/webp"],
+} as const;
+export const maxHighlights = 8;
+const highlightImagePattern = /^data:image\/(jpeg|png|webp);base64,[A-Za-z\d+/]+={0,2}$/;
 export type Catalog = {
   version: string;
   name: string;
@@ -91,6 +112,7 @@ export type Catalog = {
   hours: string;
   storeHours?: StoreHours;
   liveAvailability?: LiveAvailability;
+  highlights?: Highlight[];
   location: string;
   banner: string;
   bannerEnabled: boolean;
@@ -223,6 +245,40 @@ export function contrast(a: string, b: string) {
     y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
+export function highlightsError(items: unknown): string | null {
+  if (!Array.isArray(items) || items.length > maxHighlights) {
+    return `Use até ${maxHighlights} avisos no carrossel.`;
+  }
+  const ids = new Set<string>();
+  const date = /^\d{4}-\d{2}-\d{2}$/;
+  for (const item of items as Highlight[]) {
+    if (!item || typeof item.id !== "string" || !item.id || item.id.length > 80 || ids.has(item.id)) {
+      return "Aviso inválido ou repetido.";
+    }
+    ids.add(item.id);
+    if (typeof item.title !== "string" || item.title.length > 80 || typeof item.text !== "string" ||
+      item.text.length > 240 || typeof item.active !== "boolean") {
+      return "Título de até 80 e texto de até 240 caracteres.";
+    }
+    if (!item.title.trim() && !item.image) return "Cada aviso precisa de um título ou de uma imagem.";
+    if (item.image !== undefined && item.image !== "" &&
+      (typeof item.image !== "string" || item.image.length > 420_000 ||
+        !(highlightImagePattern.test(item.image) || /^(\/|https:\/\/)[^\s"'<>]{1,500}$/.test(item.image)))) {
+      return "Imagem do aviso inválida. Use JPEG, PNG ou WebP de até 300 KB.";
+    }
+    for (const key of ["from", "until"] as const) {
+      const value = item[key];
+      if (value !== undefined && value !== "" && !date.test(value)) return "Datas do aviso inválidas.";
+    }
+    if (item.from && item.until && item.from > item.until) return "A data final do aviso vem antes da inicial.";
+  }
+  return null;
+}
+export function highlightVisible(item: Highlight, today: string) {
+  return item.active && (!item.from || item.from <= today) && (!item.until || item.until >= today) &&
+    (!!item.title.trim() || !!item.image);
+}
+
 export function validateCatalog(value: unknown): asserts value is Catalog {
   const c = value as Catalog;
   const text = (v: unknown, max: number, required = false) =>
@@ -232,6 +288,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
   assert(c && typeof c === "object", "Catálogo inválido.");
   if (c.storeHours !== undefined) {
     const error = storeHoursError(c.storeHours);
+    assert(!error, error ?? "");
+  }
+  if (c.highlights !== undefined) {
+    const error = highlightsError(c.highlights);
     assert(!error, error ?? "");
   }
   const live = c.liveAvailability;
