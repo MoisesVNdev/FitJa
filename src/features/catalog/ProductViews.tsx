@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
-import { ChevronDown, Leaf, Plus, ShoppingBag, ZoomIn } from "lucide-react";
-import { available, componentAvailable, money, quoteCart, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
+import { useState } from "react";
+import { ChevronDown, Leaf, ShoppingBag, ZoomIn, ZoomOut } from "lucide-react";
+import { componentAvailable, hasNutritionValues, money, portionLabel, quoteCart, startingOffer, variantBasePrice, variantInStock, variantLabel, type CartLine, type Catalog, type Product, type Selection } from "../../../shared/domain";
 import { Modal, Quantity } from "../../shared/ui";
+
+type PhotoDimensions = { width: number; height: number };
+const priceLabel = (price: number | null) => price === null ? "Indisponível" : money(price);
 
 export function FoodImage({
   image,
@@ -9,137 +12,150 @@ export function FoodImage({
   large = false,
   economy = false,
   eager = false,
+  onDimensions,
 }: {
   image: string;
   name: string;
   large?: boolean;
   economy?: boolean;
   eager?: boolean;
+  onDimensions?: (size: PhotoDimensions | null) => void;
 }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [image]);
-  if (!image || failed)
-    return (
-      <div
-        className="image-placeholder"
-        role="img"
-        aria-label={`${name}: foto ainda não cadastrada`}
-      >
-        <Leaf />
-        <span>Feito com carinho</span>
-      </div>
-    );
+  const [failed, setFailed] = useState("");
   const local = image.startsWith("/media/") && !/\.[a-z\d]+$/i.test(image);
   const uploaded = /^https:.*\/640\.webp$/.test(image);
+  const thumbnail = local ? `${image}-320.webp`
+    : uploaded && (!large || economy) ? image.replace("/640.webp", "/320.webp")
+    : image;
+  const fallback = local ? `${image}.jpg` : uploaded ? image.replace("/640.webp", "/fallback.jpg") : image;
+  const [fallbackFor, setFallbackFor] = useState("");
+  const useSource = thumbnail !== fallback && fallbackFor !== thumbnail;
+
+  if (!image || failed === thumbnail) {
+    return (
+      <div className="image-placeholder" role="img" aria-label={`${name}: foto indisponível`}>
+        <Leaf aria-hidden="true" />
+        <span>Foto indisponível</span>
+      </div>
+    );
+  }
   return (
     <picture>
-      {local && (
-        <source
-          type="image/webp"
-          srcSet={
-            economy
-              ? `${image}-320.webp`
-              : `${image}-320.webp 320w, ${image}-640.webp 640w, ${image}-1280.webp 1280w`
-          }
-          sizes={
-            large
-              ? "(max-width: 600px) 100vw, 550px"
-              : "(max-width: 600px) 44vw, 280px"
-          }
-        />
-      )}
-      {uploaded && (
-        <source
-          type="image/webp"
-          srcSet={
-            economy
-              ? image.replace("/640.webp", "/320.webp")
-              : `${image.replace("/640.webp", "/320.webp")} 320w, ${image} 640w, ${image.replace("/640.webp", "/1280.webp")} 1280w`
-          }
-          sizes={
-            large
-              ? "(max-width: 600px) 100vw, 550px"
-              : "(max-width: 600px) 44vw, 280px"
-          }
-        />
-      )}
+      {useSource && <source type="image/webp" srcSet={thumbnail} />}
       <img
-        src={
-          local
-            ? `${image}.jpg`
-            : uploaded
-              ? image.replace("/640.webp", "/fallback.jpg")
-              : image
-        }
+        src={fallback}
         alt={name}
         width={large ? 640 : 320}
         height={large ? 480 : 320}
         loading={eager ? "eager" : "lazy"}
+        fetchPriority={eager ? "high" : undefined}
         decoding="async"
-        onError={() => setFailed(true)}
+        onLoad={({ currentTarget }) => onDimensions?.({
+          width: currentTarget.naturalWidth,
+          height: currentTarget.naturalHeight,
+        })}
+        onError={() => {
+          if (useSource) setFallbackFor(thumbnail);
+          else {
+            setFailed(thumbnail);
+            onDimensions?.(null);
+          }
+        }}
       />
     </picture>
   );
 }
-export function ProductCard({
-  product: p,
+
+export function FeaturedProduct({
+  product,
   catalog,
-  economy,
   onSelect,
-  eager = false,
 }: {
   product: Product;
   catalog: Catalog;
-  economy: boolean;
-  onSelect: (p: Product) => void;
-  eager?: boolean;
+  onSelect: (product: Product, opener: HTMLButtonElement) => void;
 }) {
-  const ready = available(catalog, p),
-    price = Math.min(...p.variants.map((v) => v.price));
+  const offer = startingOffer(catalog, product);
+  if (!offer) return null;
   return (
-    <article className={`product-card ${ready ? "" : "sold-out"}`}>
-      <button
-        className="product-photo"
-        onClick={() => onSelect(p)}
-        aria-label={`Ver ${p.name}`}
-      >
-        <FoodImage
-          image={p.image}
-          name={p.name}
-          economy={economy}
-          eager={eager}
-        />
-        {p.badge && <span className="product-badge">{p.badge}</span>}
-        {!ready && <span className="out-badge">Esgotado</span>}
-      </button>
-      <div className="product-copy">
-        <button className="product-title" onClick={() => onSelect(p)}>
-          {p.name}
-        </button>
-        <p>{p.description}</p>
-        <div className="product-bottom">
-          <div>
-            {p.variants.length > 1 && <small>A partir de</small>}
-            <strong>{money(price)}</strong>
-          </div>
+    <article className="featured-product">
+      <div className="featured-photo">
+        <FoodImage image={product.image} name={product.name} economy eager />
+      </div>
+      <div className="featured-details">
+        <span className="featured-tag">Destaque da casa</span>
+        <h2>{product.name}</h2>
+        <p>{variantLabel(product, offer.variant)}</p>
+        <div className="featured-controls">
+          <strong className="featured-price">{money(offer.price)}</strong>
           <button
-            className="add-button"
-            aria-label={`Escolher ${p.name}`}
-            onClick={() => onSelect(p)}
-            disabled={!ready}
+            className="button primary featured-action"
+            type="button"
+            aria-label={`Escolher ${product.name}`}
+            onClick={(event) => onSelect(product, event.currentTarget)}
           >
-            <Plus size={21} />
+            Escolher
           </button>
         </div>
       </div>
     </article>
   );
 }
+
+export function ProductCard({
+  product: p,
+  catalog,
+  categoryName,
+  economy,
+  onSelect,
+  eager = false,
+}: {
+  product: Product;
+  catalog: Catalog;
+  categoryName?: string;
+  economy: boolean;
+  onSelect: (product: Product, opener: HTMLButtonElement) => void;
+  eager?: boolean;
+}) {
+  const offer = startingOffer(catalog, p);
+  const variant = offer?.variant ?? p.variants[0];
+  return (
+    <article className={`product-card ${offer ? "" : "sold-out"}`}>
+      <div className="product-photo">
+        <FoodImage image={p.image} name={p.name} economy={economy} eager={eager} />
+      </div>
+      <div className="product-copy">
+        {categoryName && <span className="product-category">{categoryName}</span>}
+        <h3 className="product-title">{p.name}</h3>
+        {variant && <p>{variantLabel(p, variant)}</p>}
+        {p.badge && <span className="product-badge">{p.badge}</span>}
+        <div className="product-bottom">
+          {offer ? (
+            <div>
+              {(p.variants.length > 1 || p.groups.length > 0) && <small>A partir de</small>}
+              <strong>{money(offer.price)}</strong>
+            </div>
+          ) : <span className="out-badge">Esgotado</span>}
+          <button
+            className={`button ${offer ? "primary" : "secondary"} product-action`}
+            type="button"
+            aria-label={`${offer ? "Escolher" : "Ver detalhes de"} ${p.name}`}
+            onClick={(event) => onSelect(p, event.currentTarget)}
+          >
+            {offer ? "Escolher" : "Ver detalhes"}
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function ProductDialog({
   product: p,
   catalog: c,
   economy,
   initial,
+  cart,
   onClose,
   onAdd,
 }: {
@@ -147,17 +163,19 @@ export function ProductDialog({
   catalog: Catalog;
   economy: boolean;
   initial?: CartLine;
+  cart: CartLine[];
   onClose: () => void;
   onAdd: (line: CartLine) => void;
 }) {
   const [variantId, setVariant] = useState(
-      initial?.variantId || p.variants[0]?.id || "",
+      initial?.variantId || p.variants.find((entry) => variantInStock(c, p, entry.id))?.id || p.variants[0]?.id || "",
     ),
     [quantity, setQuantity] = useState(initial?.quantity || 1),
     [selections, setSelections] = useState<Selection[]>(
       initial?.selections || [],
     ),
-    [zoom, setZoom] = useState(false);
+    [zoom, setZoom] = useState(false),
+    [photoSize, setPhotoSize] = useState<PhotoDimensions | null>(null);
   const variant = p.variants.find((v) => v.id === variantId),
     line = {
       key: initial?.key || "preview",
@@ -167,9 +185,17 @@ export function ProductDialog({
       selections,
     };
   let price: number | null = null,
+    discount = 0,
     problem = "";
   try {
-    price = quoteCart(c, [line]).total;
+    const peers = variant?.quantityTiers?.length
+      ? cart.filter((item) =>
+        item.key !== line.key && item.productId === line.productId && item.variantId === variantId,
+      )
+      : [];
+    const quote = quoteCart(c, [line, ...peers]).lines[0];
+    price = quote.total;
+    discount = quote.quantityDiscount ?? 0;
   } catch (e) {
     problem = (e as Error).message;
   }
@@ -180,6 +206,10 @@ export function ProductDialog({
     ]);
   }
   const nutrition = variant?.nutrition;
+  const showNutrition = p.kind === "product" && selections.length === 0 &&
+    nutrition?.confirmed === true && hasNutritionValues(nutrition);
+  const canEnlarge = !!photoSize && Math.min(photoSize.width, photoSize.height) >= 320;
+  const expanded = canEnlarge && zoom;
   const rows = [
     ["energy", "Valor energético", "kcal"],
     ["carbs", "Carboidratos", "g"],
@@ -188,35 +218,48 @@ export function ProductDialog({
     ["saturated", "Gorduras saturadas", "g"],
     ["fiber", "Fibras alimentares", "g"],
     ["sodium", "Sódio", "mg"],
-  ];
+  ] as const;
   return (
     <Modal title={p.name} onClose={onClose}>
       <div className="dialog-scroll">
-        <button
-          className={`detail-photo ${zoom ? "zoomed" : ""}`}
-          onClick={() => setZoom(!zoom)}
-          aria-label={zoom ? "Reduzir foto" : "Ampliar foto"}
-        >
-          <FoodImage
-            image={p.image}
-            name={p.name}
-            large
-            economy={economy && !zoom}
-            eager
-          />
-          <span>
-            <ZoomIn size={16} />
-            {zoom ? "Reduzir" : "Ver de perto"}
-          </span>
-        </button>
-        <div className="detail-content">
-          <span className="eyebrow">FEITO PARA O SEU DIA</span>
-          <p>{p.description}</p>
-          {p.ingredients && (
-            <p className="ingredients">
-              <strong>Ingredientes:</strong> {p.ingredients}
-            </p>
-          )}
+        <div className="detail-content product-detail">
+          <div className={`product-intro ${expanded ? "is-expanded" : ""}`}>
+            <div
+              className={expanded ? "product-image-expanded" : "detail-photo"}
+              style={expanded && photoSize ? { maxWidth: photoSize.width } : undefined}
+            >
+              <FoodImage
+                image={p.image}
+                name={p.name}
+                large
+                economy={economy}
+                eager
+                onDimensions={setPhotoSize}
+              />
+            </div>
+            <div className="product-intro-copy">
+              <p>{p.description}</p>
+              {p.ingredients && <p><strong>Ingredientes:</strong> {p.ingredients}</p>}
+              {variant && (
+                <p className="detail-price" role="status">
+                  <span>{variantLabel(p, variant)}</span>
+                  {price !== null && quantity > 1 && <span>Total de {portionLabel(quantity)}</span>}
+                  <strong>{price === null ? "Preço base " : ""}{priceLabel(price ?? variantBasePrice(p, variant))}</strong>
+                </p>
+              )}
+              {canEnlarge && (
+                <button
+                  className="text-button detail-zoom"
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setZoom(!zoom)}
+                >
+                  {expanded ? <ZoomOut size={18} aria-hidden="true" /> : <ZoomIn size={18} aria-hidden="true" />}
+                  {expanded ? "Reduzir foto" : "Ampliar foto"}
+                </button>
+              )}
+            </div>
+          </div>
           <fieldset className="choice-fieldset">
             <legend>
               Escolha sua opção <span>Obrigatório</span>
@@ -231,14 +274,24 @@ export function ProductDialog({
                     type="radio"
                     name="variant"
                     checked={v.id === variantId}
+                    disabled={!variantInStock(c, p, v.id)}
                     onChange={() => setVariant(v.id)}
                   />
-                  {v.name}
+                  {variantLabel(p, v)}
                 </span>
-                <strong>{money(v.price)}</strong>
+                <strong>{variantInStock(c, p, v.id) ? priceLabel(variantBasePrice(p, v)) : "Esgotado"}</strong>
               </label>
             ))}
           </fieldset>
+          {!!variant?.quantityTiers?.length && (
+            <ul className="quantity-offers small">
+              {variant.quantityTiers.map((tier) => (
+                <li key={tier.minQuantity}>
+                  A partir de {tier.minQuantity} unidades da mesma opção: {money(tier.unitPrice)} por unidade
+                </li>
+              ))}
+            </ul>
+          )}
           {p.groups.map((g) => {
             const count = selections
               .filter((s) => s.groupId === g.id)
@@ -309,39 +362,25 @@ export function ProductDialog({
               ))}
             </div>
           )}
-          <details className="nutrition">
-            <summary>
-              Informações nutricionais <ChevronDown size={18} />
-            </summary>
-            {nutrition &&
-            rows.some(([k]) => nutrition[k as keyof typeof nutrition]) ? (
-              <>
-                <p>Porção: {nutrition.serving || "Não informada"}</p>
-                <table>
-                  <tbody>
-                    {rows.map(([k, label, unit]) => (
-                      <tr key={k}>
-                        <th>{label}</th>
-                        <td>
-                          {nutrition[k as keyof typeof nutrition]
-                            ? `${nutrition[k as keyof typeof nutrition]} ${unit}`
-                            : "Não informado"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <small>
-                  Informações fornecidas pela proprietária para a opção
-                  selecionada. Adicionais não incluídos.
-                </small>
-              </>
-            ) : (
-              <p>
-                Informações nutricionais ainda não informadas pela proprietária.
-              </p>
-            )}
-          </details>
+          {showNutrition && (
+            <details className="nutrition" key={variantId}>
+              <summary>
+                Ver tabela nutricional <ChevronDown size={18} aria-hidden="true" />
+              </summary>
+              <p>Porção: {nutrition.serving}</p>
+              <table>
+                <tbody>
+                  {rows.filter(([key]) => nutrition[key]?.trim()).map(([key, label, unit]) => (
+                    <tr key={key}>
+                      <th scope="row">{label}</th>
+                      <td>{nutrition[key]} {unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <small>Dados conferidos pela proprietária para a porção selecionada.</small>
+            </details>
+          )}
           <p className="muted small">
             Tem alguma restrição alimentar? Confirme os ingredientes e o preparo
             com a equipe pelo WhatsApp.
@@ -358,11 +397,14 @@ export function ProductDialog({
               onAdd({ ...line, key: initial?.key || crypto.randomUUID() })
             }
           >
-            <ShoppingBag size={18} />
+            <ShoppingBag size={18} aria-hidden="true" />
             {initial ? "Atualizar" : "Adicionar"}
             <strong>{price !== null ? money(price) : ""}</strong>
           </button>
         </div>
+        {discount > 0 && (
+          <p className="small" role="status">Desconto por quantidade nesta linha: {money(discount)}.</p>
+        )}
         {problem && (
           <p className="small muted" role="status">
             {problem}

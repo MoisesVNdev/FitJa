@@ -6,11 +6,13 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  fitVisualViewport = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  fitVisualViewport?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null),
     label = useId();
@@ -24,10 +26,32 @@ export function Modal({
       document.body.style.overflow = overflow;
     };
   }, []);
+  useEffect(() => {
+    const dialog = ref.current;
+    const viewport = window.visualViewport;
+    if (!fitVisualViewport || !dialog || !viewport) return;
+    const resize = () => {
+      if (viewport.scale !== 1) return;
+      dialog.style.setProperty("--modal-visible-height", `${viewport.height}px`);
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      dialog.style.setProperty("--modal-keyboard-inset", `${inset}px`);
+      if (inset > 0 && document.activeElement instanceof HTMLTextAreaElement &&
+        dialog.contains(document.activeElement)) {
+        document.activeElement.scrollIntoView({ block: "nearest", behavior: "instant" });
+      }
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+    };
+  }, [fitVisualViewport]);
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? "wide" : ""}`}
+      className={`modal ${wide ? "wide" : ""} ${fitVisualViewport ? "cart-modal" : ""}`}
       aria-labelledby={label}
       onCancel={(e) => {
         e.preventDefault();

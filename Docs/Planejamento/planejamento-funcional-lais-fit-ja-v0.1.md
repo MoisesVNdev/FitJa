@@ -149,6 +149,8 @@ Exemplo: com preço de R$ 50/kg:
 
 Esse modelo será habilitado somente para produtos apropriados. **Não será aplicado automaticamente às marmitas.**
 
+Decisão pendente com a Laís: como arredondar uma porção cujo cálculo resulta em fração de centavo. Até definir a regra, o editor aceita somente combinações de preço por quilo e peso que resultem em centavos inteiros. O catálogo é validado novamente ao publicar e o checkout recusa porções com preço inválido.
+
 #### Desconto por faixa de quantidade
 
 A faixa atingida definirá o preço unitário de todas as unidades elegíveis.

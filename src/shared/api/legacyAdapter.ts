@@ -1,4 +1,5 @@
 import type { EventRow, OrderEdit } from "../../../shared/contracts/admin";
+import { OperationError, type RestoreAppearance, type UpdateAvailability } from "../../../shared/contracts/operations";
 export type { EventRow, OrderEdit } from "../../../shared/contracts/admin";
 import { createClient } from "@supabase/supabase-js";
 import { initialCatalog } from "../../data";
@@ -6,6 +7,7 @@ import {
   assert,
   orderReference,
   quoteCart,
+  validPhone,
   validateCatalog,
   validateOrderEdit,
   type Catalog,
@@ -13,13 +15,20 @@ import {
   type Order,
   type Quote,
 } from "../../../shared/domain";
+import { historyEntry } from "../../../shared/domain/orders";
 
 const url = import.meta.env.VITE_SUPABASE_URL,
   key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase = url && key ? createClient(url, key) : null;
+export const supabase = url && key && location.pathname !== "/admin/preview"
+  ? createClient(url, key)
+  : null;
 export const backendConfigured = !!supabase;
+// Redes privadas (Wi-Fi de casa ou do escritório). Só valem no servidor de desenvolvimento do Vite.
+const privateNetworkHost = /^(10\.\d{1,3}|192\.168|172\.(1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}$/;
 export const demo =
-  !supabase && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  !supabase &&
+  (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) ||
+    (import.meta.env.DEV && privateNetworkHost.test(location.hostname)));
 const storage = {
   get<T>(key: string, fallback: T): T {
     try {
@@ -44,7 +53,108 @@ const checked = (c: unknown): Catalog => {
   validateCatalog(c);
   return c;
 };
-const localOrders = () => storage.get<Order[]>("orders", []);
+type LocalOrder = Order & { manualFingerprint?: string };
+const localOrders = () => storage.get<LocalOrder[]>("orders", []);
+function orderHistory(order: Order) {
+  if (order.history) return order.history;
+  const records = storage.get<{ order_id: string; before: Order | null; after: Order }[]>("history", [])
+    .filter((entry) => entry.order_id === order.id).reverse();
+  if (!records.length) return [historyEntry(order)];
+  return [...(records[0].before ? [historyEntry(records[0].before)] : []),
+    ...records.map((entry) => historyEntry(entry.after))];
+}
+let localWrite = Promise.resolve();
+function writeLocal<T>(write: () => T | Promise<T>) {
+  if (typeof window !== "undefined" && window.navigator.locks) {
+    return window.navigator.locks.request("fitja:write", write);
+  }
+  const pending = localWrite.then(write);
+  localWrite = pending.then(() => {}, () => {});
+  return pending;
+}
+
+function publishedCatalog() {
+  return checked(storage.get("published", initialCatalog));
+}
+
+function savePublished(catalog: Catalog) {
+  const saved = { ...catalog, version: crypto.randomUUID() };
+  validateCatalog(saved);
+  storage.set("published", saved);
+  return saved;
+}
+
+function previousPublication() {
+  const previous = storage.get<Catalog | null>("previous", null);
+  if (!previous) throw new OperationError("NOT_FOUND", "Ainda não há uma publicação anterior.");
+  return previous;
+}
+
+function requireDemo() {
+  if (!demo) throw new OperationError("UNSUPPORTED", "Esta operação depende da integração do novo servidor.");
+}
+
+function checkVersion(catalog: Catalog, expectedVersion: string) {
+  if (catalog.version !== expectedVersion) {
+    throw new OperationError("CONFLICT", "O cardápio publicado mudou. Atualize a tela e confira novamente.");
+  }
+}
+
+function localQuote(catalog: Catalog, cart: CartLine[]) {
+  try {
+    return quoteCart(catalog, cart);
+  } catch (error) {
+    if (error instanceof OperationError) throw error;
+    throw new OperationError("INVALID_INPUT", (error as Error).message);
+  }
+}
+
+export async function updateAvailability({ expectedVersion, change }: UpdateAvailability) {
+  requireDemo();
+  return writeLocal(() => {
+    const catalog = publishedCatalog();
+    checkVersion(catalog, expectedVersion);
+    const live = catalog.liveAvailability ?? { products: [], variants: [], buildersPaused: false };
+    if (change.kind === "builders") {
+      return savePublished({ ...catalog, liveAvailability: { ...live, buildersPaused: change.paused } });
+    }
+    const product = catalog.products.find((item) => item.id === change.productId && !item.archived);
+    if (!product || (change.kind === "variant" && !product.variants.some((v) => v.id === change.variantId))) {
+      throw new OperationError("NOT_FOUND", "O produto ou sabor já não está no cardápio publicado.");
+    }
+    if (change.kind === "product") {
+      return savePublished({
+        ...catalog, liveAvailability: { ...live, products: [
+          ...live.products.filter((item) => item.productId !== change.productId), change,
+        ] },
+      });
+    }
+    return savePublished({
+      ...catalog, liveAvailability: { ...live, variants: [
+        ...live.variants.filter((item) => item.productId !== change.productId || item.variantId !== change.variantId),
+        change,
+      ] },
+    });
+  });
+}
+
+export async function previewAppearance() {
+  requireDemo();
+  const current = publishedCatalog();
+  const { version, theme } = previousPublication();
+  return { expectedVersion: current.version, snapshot: { version, theme }, catalog: { ...current, theme } };
+}
+
+export async function restoreAppearance({ expectedVersion, snapshotVersion }: RestoreAppearance) {
+  requireDemo();
+  return writeLocal(() => {
+    const current = publishedCatalog();
+    const previous = previousPublication();
+    checkVersion(current, expectedVersion);
+    checkVersion(previous, snapshotVersion);
+    return savePublished({ ...current, theme: previous.theme });
+  });
+}
 async function invoke<T>(action: string, body: object = {}): Promise<T> {
   assert(
     supabase,
@@ -67,7 +177,7 @@ async function invoke<T>(action: string, body: object = {}): Promise<T> {
   return data as T;
 }
 export async function loadCatalog() {
-  if (demo) return checked(storage.get("published", initialCatalog));
+  if (demo) return publishedCatalog();
   if (!supabase) return structuredClone(initialCatalog);
   const { data, error } = await supabase
     .from("catalog_state")
@@ -123,19 +233,25 @@ export async function saveDraft(c: Catalog) {
 export async function publish(c: Catalog) {
   validateCatalog(c);
   if (demo) {
-    storage.set("previous", await loadCatalog());
-    storage.set("published", { ...c, version: crypto.randomUUID() });
-    storage.set("draft", c);
-    return;
+    return writeLocal(() => {
+      const current = publishedCatalog();
+      storage.set("previous", current);
+      savePublished({ ...c, liveAvailability: current.liveAvailability });
+      storage.set("draft", c);
+    });
   }
   await invoke("publish", { catalog: c });
 }
 export async function rollback() {
   if (demo) {
-    const previous = storage.get<Catalog | null>("previous", null);
-    assert(previous, "Ainda não há uma publicação anterior.");
-    await publish(previous);
-    return previous;
+    return writeLocal(() => {
+      const previous = previousPublication();
+      const current = publishedCatalog();
+      const restored = savePublished({ ...previous, liveAvailability: current.liveAvailability });
+      storage.set("previous", current);
+      storage.set("draft", restored);
+      return restored;
+    });
   }
   return invoke<Catalog>("rollback");
 }
@@ -145,40 +261,43 @@ export async function submitOrder(
   idempotencyKey: string,
   expectedSignature: string,
   token: string,
+  expectedWhatsApp?: string,
 ): Promise<Order> {
   if (demo) {
-    const quote = quoteCart(await loadCatalog(), cart);
-    assert(
-      quote.signature === expectedSignature,
-      "O cardápio mudou. Atualize a revisão antes de continuar.",
-    );
-    const orders = localOrders();
-    const previous = orders.find((o) => o.id === idempotencyKey);
-    if (previous) {
-      assert(
-        previous.original.signature === quote.signature &&
-          previous.notes === notes,
-        "Esta referência já foi utilizada. Revise o pedido.",
-      );
-      return previous;
+    if (!idempotencyKey || idempotencyKey.length > 80 || typeof notes !== "string" || notes.length > 500) {
+      throw new OperationError("INVALID_INPUT", "Confira a seleção e a observação antes de preparar o pedido.");
     }
-    const now = new Date().toISOString();
-    const order: Order = {
-      id: idempotencyKey,
-      reference: orderReference(),
-      created_at: now,
-      updated_at: now,
-      status: "requested",
-      source: "site",
-      original: quote,
-      current: quote,
-      notes,
-      adjustment: 0,
-      adjustment_reason: "",
-      completed_at: null,
-    };
-    storage.set("orders", [order, ...orders]);
-    return order;
+    return writeLocal(() => {
+      const catalog = publishedCatalog();
+      if (!validPhone(catalog.whatsapp)) throw new OperationError("INVALID_INPUT", "WhatsApp da loja ainda não configurado.");
+      if (expectedWhatsApp !== undefined && catalog.whatsapp !== expectedWhatsApp) {
+        throw new OperationError("CATALOG_CHANGED", "O contato do WhatsApp mudou. Revise a sacola.");
+      }
+      const orders = localOrders();
+      const previous = orders.find((o) => o.id === idempotencyKey);
+      if (previous) {
+        const originalNotes = previous.originalNotes ?? orderHistory(previous)[0].notes;
+        if (previous.source !== "site" || previous.original.signature !== expectedSignature || originalNotes !== notes ||
+          JSON.stringify(cartFromQuote(previous.original)) !== JSON.stringify(cart.map(({ key, productId, variantId, quantity, selections }) =>
+            ({ key, productId, variantId, quantity, selections })))) {
+          throw new OperationError("IDEMPOTENCY_CONFLICT", "Esta referência já foi utilizada. Revise o pedido.");
+        }
+        return { ...previous, current: previous.original, notes: originalNotes, adjustment: 0 };
+      }
+      const quote = localQuote(catalog, cart);
+      if (quote.signature !== expectedSignature) {
+        throw new OperationError("CATALOG_CHANGED", "O cardápio mudou. Atualize a revisão antes de continuar.");
+      }
+      const now = new Date().toISOString();
+      const order: Order = {
+        id: idempotencyKey, reference: orderReference(), created_at: now, updated_at: now,
+        status: "requested", source: "site", original: quote, current: quote,
+        notes, originalNotes: notes, adjustment: 0, adjustment_reason: "", completed_at: null,
+      };
+      order.history = [historyEntry(order)];
+      storage.set("orders", [order, ...orders]);
+      return order;
+    });
   }
   return invoke<Order>("checkout", {
     cart,
@@ -186,10 +305,11 @@ export async function submitOrder(
     idempotencyKey,
     expectedSignature,
     token,
+    expectedWhatsApp,
   });
 }
 export async function listOrders(): Promise<Order[]> {
-  if (demo) return localOrders();
+  if (demo) return localOrders().map((order) => ({ ...order, history: orderHistory(order) }));
   assert(supabase, "Servidor não configurado.");
   // Paginate to avoid the default 1,000-row limit silently skewing the dashboard.
   const rows: Order[] = [];
@@ -205,47 +325,78 @@ export async function listOrders(): Promise<Order[]> {
     if (data.length < 500) return rows;
   }
 }
+export async function findSiteOrder(reference: string): Promise<Order> {
+  requireDemo();
+  const order = localOrders().find((item) =>
+    item.source === "site" && item.reference.toUpperCase() === reference.trim().toUpperCase());
+  if (!order) throw new OperationError("NOT_FOUND", "Referência do site não encontrada. Confira o número.");
+  return { ...order, history: orderHistory(order) };
+}
+
 export async function saveOrder(edit: OrderEdit): Promise<Order> {
-  validateOrderEdit(
-    edit.status,
-    edit.source,
-    edit.adjustment,
-    edit.adjustment_reason,
-  );
-  if (!demo) return invoke("save-order", { edit });
+  try {
+    validateOrderEdit(edit.status, edit.source, edit.adjustment, edit.adjustment_reason, demo);
+  } catch (error) {
+    throw new OperationError("INVALID_INPUT", (error as Error).message);
+  }
+  if (!demo) {
+    if (edit.siteReference || edit.paymentMethod || edit.idempotencyKey) requireDemo();
+    return invoke("save-order", { edit });
+  }
+  if (edit.paymentMethod !== undefined && (typeof edit.paymentMethod !== "string" || edit.paymentMethod.length > 80)) {
+    throw new OperationError("INVALID_INPUT", "Informe a forma de pagamento em até 80 caracteres.");
+  }
+  return writeLocal(() => saveLocalOrder(edit));
+}
+
+function saveLocalOrder(edit: OrderEdit): Order {
   const orders = localOrders(),
     old = orders.find((o) => o.id === edit.id);
-  assert(!edit.id || old, "Pedido não encontrado.");
-  assert(
-    !old || old.updated_at === edit.expectedUpdatedAt,
-    "Pedido atualizado em outra janela. Recarregue antes de salvar.",
-  );
+  if ((edit.id && !old) || (edit.siteReference && (!old || old.source !== "site" || old.reference !== edit.siteReference))) {
+    throw new OperationError("NOT_FOUND", "Abra a solicitação pela referência do site antes de registrar a venda.");
+  }
+  if (old && old.updated_at !== edit.expectedUpdatedAt) {
+    throw new OperationError("CONFLICT", "Pedido atualizado em outra janela. Recarregue antes de salvar.");
+  }
+  if (!old && edit.source === "site") {
+    throw new OperationError("INVALID_INPUT", "Use a referência da solicitação existente para registrar uma venda do site.");
+  }
+  const manualFingerprint = edit.idempotencyKey && !old ? JSON.stringify([
+    edit.cart, edit.notes, edit.status, edit.source, edit.adjustment, edit.adjustment_reason, edit.paymentMethod?.trim() || "",
+  ]) : undefined;
+  const prior = !old && edit.idempotencyKey ? orders.find((o) => o.id === edit.idempotencyKey) : undefined;
+  if (prior) {
+    if (prior.manualFingerprint !== manualFingerprint) {
+      throw new OperationError("IDEMPOTENCY_CONFLICT", "Esta venda já foi registrada com outros dados. Confira os pedidos.");
+    }
+    return prior;
+  }
   const q = edit.cart
-    ? quoteCart(await loadCatalog(), edit.cart)
+    ? localQuote(publishedCatalog(), edit.cart)
     : old?.current;
-  assert(q, "Adicione os produtos do pedido.");
-  assert(q.total + edit.adjustment >= 0, "O total não pode ser negativo.");
-  const now = new Date().toISOString();
-  const order: Order = {
-    id: old?.id || crypto.randomUUID(),
+  if (!q) throw new OperationError("INVALID_INPUT", "Adicione os produtos do pedido.");
+  if (q.total + edit.adjustment < 0) throw new OperationError("INVALID_INPUT", "O total não pode ser negativo.");
+  const now = new Date(Math.max(Date.now(), old ? Date.parse(old.updated_at) + 1 : 0)).toISOString();
+  const history = old ? orderHistory(old) : [];
+  const order: LocalOrder = {
+    id: old?.id || edit.idempotencyKey || crypto.randomUUID(),
     reference: old?.reference || orderReference(),
     created_at: old?.created_at || now,
     updated_at: now,
     status: edit.status,
-    source: old?.source === "site" ? "site" : edit.source,
+    source: old?.source ?? edit.source,
     notes: edit.notes,
     original: old?.original || q,
+    originalNotes: old?.originalNotes ?? history[0]?.notes ?? edit.notes,
     current: q,
     adjustment: edit.adjustment,
     adjustment_reason: edit.adjustment_reason,
     completed_at: edit.status === "completed" ? old?.completed_at || now : null,
+    paymentMethod: edit.paymentMethod === undefined ? old?.paymentMethod : edit.paymentMethod.trim() || undefined,
+    manualFingerprint: old?.manualFingerprint ?? manualFingerprint,
   };
+  order.history = [...history, historyEntry(order)];
   storage.set("orders", [order, ...orders.filter((o) => o.id !== order.id)]);
-  const history = storage.get<object[]>("history", []);
-  storage.set("history", [
-    { order_id: order.id, before: old || null, after: order, at: now },
-    ...history,
-  ]);
   return order;
 }
 let sessionId = "";
@@ -320,6 +471,7 @@ export function csv(orders: Order[]) {
       "Conclusão",
       "Origem",
       "Status",
+      "Forma de pagamento",
       "Produtos",
       "Total produtos (R$)",
       "Ajuste (R$)",
@@ -334,6 +486,7 @@ export function csv(orders: Order[]) {
       o.completed_at,
       o.source,
       o.status,
+      o.paymentMethod,
       o.current.lines
         .map(
           (l) =>

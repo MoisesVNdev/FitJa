@@ -1,5 +1,10 @@
+import type { OrderHistoryEntry } from "../contracts/admin.ts";
+import { OperationError, type LiveAvailability, type StoreHours } from "../contracts/operations.ts";
+import { storeHoursError } from "./hours.ts";
+
 export type Nutrition = {
   serving: string;
+  confirmed?: boolean;
   energy?: string;
   carbs?: string;
   protein?: string;
@@ -8,10 +13,22 @@ export type Nutrition = {
   fiber?: string;
   sodium?: string;
 };
+export function hasNutritionValues(nutrition: Nutrition | undefined) {
+  return !!nutrition?.serving?.trim() &&
+    Object.entries(nutrition).some(([key, value]) =>
+      key !== "serving" && typeof value === "string" && value.trim().length > 0,
+    );
+}
+export type QuantityTier = {
+  minQuantity: number;
+  unitPrice: number;
+};
 export type Variant = {
   id: string;
   name: string;
   price: number;
+  weightGrams?: number;
+  quantityTiers?: QuantityTier[];
   nutrition?: Nutrition;
 };
 export type Component = {
@@ -45,6 +62,7 @@ export type Product = {
   featured: boolean;
   badge: string;
   kind: "product" | "fixed" | "builder";
+  pricePerKg?: number;
   variants: Variant[];
   groups: ChoiceGroup[];
   components: Component[];
@@ -64,6 +82,27 @@ export type Theme = {
   font: "Nunito Sans" | "DM Sans" | "Manrope";
   scale: number;
 };
+// Aviso do carrossel de destaques (feriado, horário, promoção). Pode ter só imagem.
+// Os produtos em destaque continuam vindo do campo `featured` de cada produto.
+export type Highlight = {
+  id: string;
+  title: string;
+  text: string;
+  /** data URL (demonstração) ou caminho/URL público (servidor final). */
+  image?: string;
+  active: boolean;
+  /** AAAA-MM-DD, hora de Caruaru. Vazio = sem limite. */
+  from?: string;
+  until?: string;
+};
+export const highlightImageLimits = {
+  width: 1200,
+  height: 600,
+  maxBytes: 300 * 1024,
+  types: ["image/jpeg", "image/png", "image/webp"],
+} as const;
+export const maxHighlights = 8;
+const highlightImagePattern = /^data:image\/(jpeg|png|webp);base64,[A-Za-z\d+/]+={0,2}$/;
 export type Catalog = {
   version: string;
   name: string;
@@ -71,6 +110,9 @@ export type Catalog = {
   whatsapp: string;
   instagram: string;
   hours: string;
+  storeHours?: StoreHours;
+  liveAvailability?: LiveAvailability;
+  highlights?: Highlight[];
   location: string;
   banner: string;
   bannerEnabled: boolean;
@@ -91,11 +133,12 @@ export type QuotedLine = CartLine & {
   variant: string;
   unitPrice: number;
   total: number;
+  quantityDiscount?: number;
   details: string[];
   components: (Component & { name: string })[];
 };
 export type Quote = { lines: QuotedLine[]; total: number; signature: string };
-export type OrderStatus = "requested" | "confirmed" | "completed" | "cancelled";
+export type OrderStatus = "requested" | "evaluating" | "confirmed" | "completed" | "cancelled";
 export type Order = {
   id: string;
   reference: string;
@@ -109,6 +152,9 @@ export type Order = {
   adjustment: number;
   adjustment_reason: string;
   completed_at: string | null;
+  paymentMethod?: string;
+  history?: OrderHistoryEntry[];
+  originalNotes?: string;
 };
 export const money = (cents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -124,6 +170,59 @@ export function assert(condition: unknown, message: string): asserts condition {
 }
 const integer = (v: unknown, min = 0, max = 1_000_000) =>
   typeof v === "number" && Number.isSafeInteger(v) && v >= min && v <= max;
+export function weightPortionPrice(pricePerKg: number, grams: number | undefined) {
+  if (!integer(pricePerKg, 1) || grams === undefined || !integer(grams, 1)) return null;
+  const price = (pricePerKg * grams) / 1000;
+  return integer(price, 1) ? price : null;
+}
+
+export function variantBasePrice(product: Product, variant: Variant) {
+  return product.pricePerKg === undefined
+    ? variant.price
+    : weightPortionPrice(product.pricePerKg, variant.weightGrams);
+}
+
+export function variantLabel(product: Product, variant: Variant) {
+  return product.pricePerKg === undefined
+    ? variant.name
+    : `${variant.name} · ${variant.weightGrams} g`;
+}
+
+export function supportsQuantityTiers(product: Product) {
+  return product.kind === "product" && product.pricePerKg === undefined && product.groups?.length === 0;
+}
+
+export function quantityTierError(product: Product, variant: Variant) {
+  const tiers = variant.quantityTiers;
+  if (tiers === undefined) return null;
+  if (!Array.isArray(tiers)) return "Faixas de quantidade inválidas.";
+  if (tiers.length === 0) return null;
+  if (!supportsQuantityTiers(product)) return "Use faixas somente em avulsos com preço fixo e sem adicionais.";
+  if (tiers.length > 10) return "Cadastre até 10 faixas por opção.";
+  let previousQuantity = 1;
+  let previousPrice = variant.price;
+  for (const tier of tiers) {
+    if (!tier || !integer(tier.minQuantity, previousQuantity + 1, 99)) {
+      return "Informe quantidades inteiras de 2 a 99 em ordem crescente.";
+    }
+    if (!integer(tier.unitPrice, 1, previousPrice - 1)) {
+      return "Informe um preço unitário positivo e menor que o da faixa anterior ou do preço base.";
+    }
+    previousQuantity = tier.minQuantity;
+    previousPrice = tier.unitPrice;
+  }
+  return null;
+}
+
+export function quantityTierDrops(variant: Variant) {
+  return (variant.quantityTiers ?? []).flatMap((tier, index, tiers) => {
+    const previousQuantity = tier.minQuantity - 1;
+    const previousTotal = previousQuantity * (tiers[index - 1]?.unitPrice ?? variant.price);
+    const total = tier.minQuantity * tier.unitPrice;
+    return total < previousTotal ? [{ previousQuantity, previousTotal, quantity: tier.minQuantity, total }] : [];
+  });
+}
+
 export function validPhone(phone: string) {
   return /^55[1-9]\d{9,10}$/.test(phone);
 }
@@ -146,6 +245,40 @@ export function contrast(a: string, b: string) {
     y = luminance(b);
   return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
 }
+export function highlightsError(items: unknown): string | null {
+  if (!Array.isArray(items) || items.length > maxHighlights) {
+    return `Use até ${maxHighlights} avisos no carrossel.`;
+  }
+  const ids = new Set<string>();
+  const date = /^\d{4}-\d{2}-\d{2}$/;
+  for (const item of items as Highlight[]) {
+    if (!item || typeof item.id !== "string" || !item.id || item.id.length > 80 || ids.has(item.id)) {
+      return "Aviso inválido ou repetido.";
+    }
+    ids.add(item.id);
+    if (typeof item.title !== "string" || item.title.length > 80 || typeof item.text !== "string" ||
+      item.text.length > 240 || typeof item.active !== "boolean") {
+      return "Título de até 80 e texto de até 240 caracteres.";
+    }
+    if (!item.title.trim() && !item.image) return "Cada aviso precisa de um título ou de uma imagem.";
+    if (item.image !== undefined && item.image !== "" &&
+      (typeof item.image !== "string" || item.image.length > 420_000 ||
+        !(highlightImagePattern.test(item.image) || /^(\/|https:\/\/)[^\s"'<>]{1,500}$/.test(item.image)))) {
+      return "Imagem do aviso inválida. Use JPEG, PNG ou WebP de até 300 KB.";
+    }
+    for (const key of ["from", "until"] as const) {
+      const value = item[key];
+      if (value !== undefined && value !== "" && !date.test(value)) return "Datas do aviso inválidas.";
+    }
+    if (item.from && item.until && item.from > item.until) return "A data final do aviso vem antes da inicial.";
+  }
+  return null;
+}
+export function highlightVisible(item: Highlight, today: string) {
+  return item.active && (!item.from || item.from <= today) && (!item.until || item.until >= today) &&
+    (!!item.title.trim() || !!item.image);
+}
+
 export function validateCatalog(value: unknown): asserts value is Catalog {
   const c = value as Catalog;
   const text = (v: unknown, max: number, required = false) =>
@@ -153,6 +286,26 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
     v.length <= max &&
     (!required || v.trim().length > 0);
   assert(c && typeof c === "object", "Catálogo inválido.");
+  if (c.storeHours !== undefined) {
+    const error = storeHoursError(c.storeHours);
+    assert(!error, error ?? "");
+  }
+  if (c.highlights !== undefined) {
+    const error = highlightsError(c.highlights);
+    assert(!error, error ?? "");
+  }
+  const live = c.liveAvailability;
+  if (live !== undefined) {
+    assert(
+      live && typeof live.buildersPaused === "boolean" &&
+      Array.isArray(live.products) && live.products.every((entry) =>
+        entry?.kind === "product" && text(entry.productId, 80, true) && typeof entry.available === "boolean") &&
+      Array.isArray(live.variants) && live.variants.every((entry) =>
+        entry?.kind === "variant" && text(entry.productId, 80, true) &&
+        text(entry.variantId, 80, true) && typeof entry.available === "boolean"),
+      "Disponibilidade publicada inválida.",
+    );
+  }
   assert(
     text(c.version, 80, true) &&
       text(c.name, 120, true) &&
@@ -278,6 +431,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
       "Cadastre de 1 a 30 opções de produto.",
     );
     const variants = new Set<string>();
+    assert(
+      p.pricePerKg === undefined || (p.kind === "product" && integer(p.pricePerKg, 1)),
+      `Preço por quilo inválido em ${p.name}.`,
+    );
     for (const v of p.variants) {
       assert(
         text(v.id, 80, true) &&
@@ -288,13 +445,21 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
       );
       variants.add(v.id);
       assert(
-        p.archived || v.price > 0,
+        p.pricePerKg !== undefined || p.archived || v.price > 0,
         `Informe preços maiores que zero em ${p.name} antes de publicar.`,
       );
-      if (v.nutrition)
+      if (p.pricePerKg !== undefined) {
+        assert(
+          variantBasePrice(p, v) !== null,
+          `Confira o peso e o preço de ${v.name} em ${p.name}. A porção deve custar um valor positivo em centavos inteiros.`,
+        );
+      }
+      const tierError = quantityTierError(p, v);
+      assert(!tierError, `${p.name} · ${v.name}: ${tierError}`);
+      if (v.nutrition) {
         for (const [k, n] of Object.entries(v.nutrition))
           assert(
-            [
+            k === "confirmed" ? typeof n === "boolean" : [
               "serving",
               "energy",
               "carbs",
@@ -306,6 +471,10 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
             ].includes(k) && text(n, 100),
             "Informação nutricional inválida.",
           );
+        if (v.nutrition.confirmed) {
+          assert(hasNutritionValues(v.nutrition), "Informe a porção e os valores nutricionais conferidos.");
+        }
+      }
     }
     assert(
       Array.isArray(p.groups) &&
@@ -380,6 +549,13 @@ export function validateCatalog(value: unknown): asserts value is Catalog {
     }
   }
 }
+export function productInStock(c: Catalog, p: Product) {
+  return c.liveAvailability?.products.find((item) => item.productId === p.id)?.available ?? p.available;
+}
+export function variantInStock(c: Catalog, p: Product, variantId: string) {
+  return c.liveAvailability?.variants.find((item) =>
+    item.productId === p.id && item.variantId === variantId)?.available ?? true;
+}
 export function componentAvailable(
   c: Catalog,
   component: Omit<Component, "quantity">,
@@ -387,16 +563,18 @@ export function componentAvailable(
   return c.products.some(
     (p) =>
       p.id === component.productId &&
-      p.available &&
+      productInStock(c, p) &&
       !p.archived &&
       p.kind === "product" &&
-      p.variants.some((v) => v.id === component.variantId),
+      p.variants.some((v) => v.id === component.variantId && variantInStock(c, p, v.id)),
   );
 }
 export function available(c: Catalog, p: Product) {
   return (
-    p.available &&
+    productInStock(c, p) &&
     !p.archived &&
+    !(p.kind === "builder" && c.liveAvailability?.buildersPaused) &&
+    p.variants.some((variant) => variantInStock(c, p, variant.id)) &&
     p.components.every((x) => componentAvailable(c, x)) &&
     p.groups.every((g) => {
       const n = g.options.filter(
@@ -406,11 +584,51 @@ export function available(c: Catalog, p: Product) {
     })
   );
 }
+export function startingOffer(c: Catalog, p: Product) {
+  if (!available(c, p)) return null;
+  const options = p.variants.filter((entry) => variantInStock(c, p, entry.id));
+  const variant = options.reduce((cheapest, candidate) =>
+    (variantBasePrice(p, candidate) ?? Infinity) < (variantBasePrice(p, cheapest) ?? Infinity)
+      ? candidate
+      : cheapest,
+  );
+  const selections = p.groups
+    .filter((group) => group.min > 0)
+    .flatMap((group) => {
+      const options = group.options
+        .filter((option) => !option.component || componentAvailable(c, option.component))
+        .sort((a, b) => a.price - b.price);
+      return options.slice(0, group.repeat ? 1 : group.min).map((option) => ({
+        groupId: group.id,
+        optionId: option.id,
+        quantity: group.repeat ? group.min : 1,
+      }));
+    });
+  try {
+    const { total: price } = quoteCart(c, [{
+      key: "offer",
+      productId: p.id,
+      variantId: variant.id,
+      quantity: 1,
+      selections,
+    }]);
+    return { variant, price };
+  } catch {
+    return null;
+  }
+}
 export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
   assert(
     Array.isArray(cart) && cart.length > 0 && cart.length <= 50,
     "Selecione entre 1 e 50 itens diferentes.",
   );
+  const quantities = new Map<string, number>();
+  const tierKey = (line: CartLine) => JSON.stringify([line.productId, line.variantId]);
+  for (const line of cart) {
+    assert(integer(line.quantity, 1, 99), "Escolha uma opção e quantidade válidas.");
+    const key = tierKey(line);
+    quantities.set(key, (quantities.get(key) ?? 0) + line.quantity);
+  }
   const keys = new Set<string>();
   const lines = cart.map((line) => {
     assert(
@@ -421,20 +639,32 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
     );
     keys.add(line.key);
     const p = c.products.find((x) => x.id === line.productId);
-    assert(
-      p && available(c, p),
-      `${p?.name ?? "Produto"} está indisponível. Revise o pedido.`,
-    );
+    if (!p || !available(c, p)) {
+      throw new OperationError("UNAVAILABLE", `${p?.name ?? "Produto"} está indisponível. Revise o pedido.`);
+    }
     const v = p.variants.find((x) => x.id === line.variantId);
     assert(
-      v && integer(line.quantity, 1, 99),
+      v,
       "Escolha uma opção e quantidade válidas.",
     );
+    if (!variantInStock(c, p, v.id)) {
+      throw new OperationError("UNAVAILABLE", `${v.name} está indisponível. Revise o pedido.`);
+    }
     assert(
       Array.isArray(line.selections) && line.selections.length <= 100,
       "Escolhas inválidas.",
     );
-    let unitPrice = v.price;
+    const basePrice = variantBasePrice(p, v);
+    assert(basePrice !== null, `O preço por peso de ${p.name} está indisponível.`);
+    const tiers = v.quantityTiers ?? [];
+    const tierError = quantityTierError(p, v);
+    assert(!tierError, tierError ?? "");
+    const groupedQuantity = quantities.get(tierKey(line)) ?? line.quantity;
+    const tier = tiers.reduce<QuantityTier | undefined>(
+      (active, candidate) => candidate.minQuantity <= groupedQuantity ? candidate : active,
+      undefined,
+    );
+    let unitPrice = tier?.unitPrice ?? basePrice;
     const components = p.components.map((x) => ({
       ...x,
       name: c.products.find((y) => y.id === x.productId)!.name,
@@ -453,10 +683,9 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
         "Escolha inválida ou repetida.",
       );
       seen.add(key);
-      assert(
-        !option.component || componentAvailable(c, option.component),
-        `${option.name} está indisponível.`,
-      );
+      if (option.component && !componentAvailable(c, option.component)) {
+        throw new OperationError("UNAVAILABLE", `${option.name} está indisponível.`);
+      }
       unitPrice += option.price * s.quantity;
       details.push(
         `${s.quantity}× ${option.name}${option.price ? ` (+${money(option.price)} cada)` : ""}`,
@@ -493,9 +722,10 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
         quantity: s.quantity,
       })),
       name: p.name,
-      variant: v.name,
+      variant: variantLabel(p, v),
       unitPrice,
       total: unitPrice * line.quantity,
+      ...(tier ? { quantityDiscount: (basePrice - tier.unitPrice) * line.quantity } : {}),
       details,
       components,
     };
@@ -518,6 +748,9 @@ export function quoteCart(c: Catalog, cart: CartLine[]): Quote {
   );
   return { lines, total, signature };
 }
+export function portionLabel(quantity: number) {
+  return `${quantity} ${quantity === 1 ? "porção" : "porções"}`;
+}
 export function orderMessage(order: Order, compact = false) {
   const q = order.current;
   return [
@@ -525,7 +758,7 @@ export function orderMessage(order: Order, compact = false) {
     `Referência: ${order.reference}`,
     "",
     ...q.lines.flatMap((l) => [
-      `${l.quantity}× ${l.name} · ${l.variant} — ${money(l.unitPrice)} cada · ${money(l.total)}`,
+      `${l.name} · ${portionLabel(l.quantity)} · ${l.variant} — ${money(l.unitPrice)} por porção · ${money(l.total)}`,
       ...(compact ? [] : l.details.map((d) => `  ${d}`)),
     ]),
     "",
@@ -557,9 +790,10 @@ export function validateOrderEdit(
   source: unknown,
   adjustment: unknown,
   reason: unknown,
+  allowEvaluating = false,
 ) {
   assert(
-    ["requested", "confirmed", "completed", "cancelled"].includes(
+    (allowEvaluating && status === "evaluating") || ["requested", "confirmed", "completed", "cancelled"].includes(
       String(status),
     ),
     "Status inválido.",

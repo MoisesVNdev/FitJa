@@ -91,7 +91,7 @@ O encaminhamento agora inclui controles nativos de Entrega/Retirada e usa `order
 | Fronteira atual | Entrada, saída e invariantes a preservar |
 | --- | --- |
 | Catálogo público | `loadCatalog(): Promise<Catalog>`. Somente versão publicada; validar resposta. `Catalog`, `Product`, `CartLine`, `Quote` e `Order` estão em `shared/domain`. Valores monetários são centavos inteiros. Rascunho não deve ser acessível por essa operação. |
-| Revisão e criação | `CheckoutApi` em `shared/contracts/checkout.ts`: `submitOrder(cart, notes, idempotencyKey, expectedSignature, token): Promise<Order>`. Servidor recalcula com dados vigentes, rejeita assinatura divergente e opções indisponíveis, valida limites e retorna snapshot e referência. Nunca confiar no total do navegador. Chave repetida com o mesmo conteúdo retorna o registro original; com conteúdo diferente deve falhar. |
+| Revisão e criação | `CheckoutApi` em `shared/contracts/checkout.ts`: `submitOrder(cart, notes, idempotencyKey, expectedSignature, token, expectedWhatsApp?): Promise<Order>`. Servidor recalcula com dados vigentes, rejeita assinatura divergente e opções indisponíveis, valida limites e retorna snapshot e referência. Quando informado, o contato revisado precisa coincidir com o atual. Nunca confiar no total do navegador. Chave repetida com o mesmo conteúdo retorna o registro original; com conteúdo diferente deve falhar. |
 | Preferência de recebimento | `Fulfillment = delivery \| pickup`. Nesta transição vai como prefixo de `notes` (limite total 500; editor reserva 450 para observação). Worker e D1 poderão ganhar campo próprio em mudança coordenada. Não exigir esse campo no servidor legado. |
 | Pedidos administrativos | `OrderEdit` em `shared/contracts/admin.ts`. `saveOrder` preserva `original`, origem inicial e referência; usa `expectedUpdatedAt` para impedir sobrescrita concorrente. `listOrders` mantém paginação completa. Só concluídos entram na receita. |
 | Catálogo administrativo | `getDraft`, `saveDraft`, `publish`, `rollback` em `src/shared/api/admin.ts`. Validar publicação no servidor e manter versão pública separada. A restauração atual ainda é de catálogo completo. Separar aparência de disponibilidade operacional exige novo contrato. |
@@ -99,7 +99,7 @@ O encaminhamento agora inclui controles nativos de Entrega/Retirada e usa `order
 | Mídia | `uploadProductImages({name, blob}[])` retorna URL pública de 640 px, com versões 320/640/1280 WebP e fallback JPEG. A geração não amplia o original. R2 deverá separar originais privados e derivados públicos; o envio de original privado ainda não existe. |
 | Eventos | `EventRow` em `shared/contracts/admin.ts`; falha de telemetria não bloqueia cardápio nem checkout. Preservar paginação dos relatórios e não usar eventos como vendas. |
 
-Erros atuais chegam como `Error.message`; não há envelope HTTP ou códigos estáveis definidos. A conversa 03 deve definir status e códigos para preço alterado, indisponibilidade, conflito, acesso negado e limite de requisições, preservando a seleção para revisão. Horários ainda são texto (`Catalog.hours`), não calendário estruturado. Estado “Em avaliação”, forma de pagamento, publicação operacional independente e regras completas das personalizadas continuam pendentes de contratos próprios. Não simular essas capacidades como concluídas.
+No adaptador legado, erros chegam como `Error.message` e horários vêm de `Catalog.hours`. A etapa 07 abaixo registra o contrato do Worker e a demonstração local para horários estruturados, disponibilidade independente, estado “Em avaliação” e forma de pagamento. A montagem personalizada experimental segue a pendência da etapa 06.
 
 ### Verificação e limite desta entrega
 
@@ -124,3 +124,188 @@ Situação da primeira execução: implementação local entregue. A verificaç�
 O log de rede do Chrome registrou `index-BdrrjJm2.js` e `index-BBKRTzkV.css` na rota pública, durante a abertura e o fluxo da sacola. O controle positivo em `/admin` carregou `Admin-C3aX7g_V.js`, `Admin-BDMquTx8.css`, `Dashboard-D9gGLBvc.js`, `SettingsPanel-dEEpBHOs.js` e `Orders-DKnKHLlE.js` ao abrir as telas correspondentes. Nenhum desses cinco arquivos apareceu na rede pública, inclusive após visitar o painel. Os nomes com hash correspondem a este build.
 
 Continuam para o aceite de lançamento os ensaios em iPhone e Android reais, navegador interno do Instagram, teclado virtual, rede limitada e encaminhamento efetivo pelo WhatsApp.
+
+## Etapa 01 do roteiro móvel · Vitrine e identidade
+
+A rota pública usa o cabeçalho com a arte da Fit Já, sacola identificada e acesso a horário, localização e contatos. A vitrine apresenta o primeiro produto marcado como destaque que passa pela regra de disponibilidade do domínio. O botão abre a ficha existente. Sem destaque disponível, a busca vem logo após o cabeçalho. A ordem dos destaques segue a lista do catálogo publicado. O catálogo inicial põe a coxinha em primeiro lugar e mostra a porção cadastrada de 120 g por R$ 9,50. A composição pode ser confirmada com a Laís antes de entrar na ficha.
+
+O painel reutiliza a abertura pública na prévia do rascunho. A largura real da coluna determina a apresentação dos cartões, inclusive na moldura móvel. O cabeçalho e as ações usam as variáveis do tema do catálogo. Os contratos, os identificadores e as chaves de persistência foram preservados. A mudança no destaque de fábrica só vale para o catálogo de demonstração inicial.
+
+### Aceite da etapa
+
+Aprovado localmente no Chrome 158, com perfil descartável, movimento reduzido e dados fictícios nos cenários de personalização e sacola. As comparações partiram do topo da rota `/`, na prévia de produção do Vite, com o mesmo navegador, viewport e catálogo-base. O ensaio usou toque emulado no destaque e confirmou a passagem pela ficha existente.
+
+| Cenário | Resultado e capturas |
+| --- | --- |
+| 390 × 844 | Marca, sacola, busca, categorias e Coxinha fit com porção, preço e ação visíveis sem rolar. A ação termina a 236 px do topo. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-390.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-390.png) · [Ficha](../../artifacts/etapa-01-vitrine-mobile/ficha-390.png) |
+| 393 × 852 | Os mesmos critérios passaram. A ação termina a 222 px e abre a ficha da coxinha. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-393.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-393.png) |
+| Identidade | A faixa laranja `#EA5A1C` permanece visível com a marca e o logotipo ocultos em uma cópia da captura. [Assinatura sem logotipo](../../artifacts/etapa-01-vitrine-mobile/identidade-sem-logo-390.png) |
+| Destaque e dados existentes | Com a coxinha esgotada, a vitrine mostrou a próxima opção de destaque disponível. Sem destaque, abriu diretamente na busca. A recarga preservou o catálogo fictício armazenado e os itens da sacola. [Destaque alternativo](../../artifacts/etapa-01-vitrine-mobile/fallback-esgotado-390.png) · [Sem destaque](../../artifacts/etapa-01-vitrine-mobile/sem-destaque-390.png) |
+| Personalização | Tema azul e fonte Manrope aplicados na rota pública e na prévia do painel. O diálogo exibiu horário, localização e contato fictícios. [Tema salvo](../../artifacts/etapa-01-vitrine-mobile/tema-personalizado-390.png) · [Prévia do painel](../../artifacts/etapa-01-vitrine-mobile/previa-painel-390.png) |
+| Tela larga | Vitrine centralizada a 1366 × 768. [Antes](../../artifacts/etapa-01-vitrine-mobile/antes-1366.png) · [Depois](../../artifacts/etapa-01-vitrine-mobile/depois-1366.png) |
+
+A revisão com `web-design-guidelines` conferiu os nomes dos controles, o estado das categorias, o foco e o atalho de teclado para a busca, as dimensões das imagens e as áreas de toque dos controles da abertura. A navegação pública continuou sem carregar os arquivos do painel. `npm.cmd test` aprovou 30 testes em quatro arquivos e `npm.cmd run build` passou.
+
+Para revisão da entrega, mostrar a comparação à Laís e confirmar a composição da coxinha. O aceite de lançamento ainda inclui os aparelhos reais e o navegador interno do Instagram.
+
+## Etapa 02 do roteiro móvel · Catálogo e busca
+
+### Conferência do catálogo de demonstração
+
+As respostas do questionário e as decisões posteriores do produto orientam a demonstração em perfil novo. A arte física é a referência dos recortes fotográficos e de parte dos cadastros. A Laís ainda precisa aprovar o conteúdo definitivo para publicação. [Questionário](../respostas-lais-fit-ja.md) · [Decisões de produto](design-e-arquitetura-front-end-lais-fit-ja.md#exemplos-do-questionário-para-conferir-a-interface)
+
+| Cadastro conferido | Aplicação na demonstração |
+| --- | --- |
+| Marmita de frango | Arroz, feijão e frango em cubos. 300 g por R$ 16,00, 350 g por R$ 18,00, 400 g por R$ 20,00 e 500 g por R$ 22,00. De 350 g em diante, inclui legumes. |
+| Marmita de carne moída | Arroz, feijão e carne moída. 300 g por R$ 18,00, 350 g por R$ 20,00, 400 g e 500 g por R$ 22,00. De 350 g em diante, inclui legumes. |
+| Escondidinho | Preservada a variante de carne moída de 300 g por R$ 21,00, junto das outras variantes cadastradas. |
+| Bolo de banana | Nome alinhado para Bolo fit de banana, com a fatia de 100 g por R$ 5,00 já cadastrada. Mantidas as demais variantes existentes. |
+| Coxinha | Mantida como primeiro destaque. A descrição usa a composição da resposta 1. As porções e preços existentes foram preservados. A demonstração mantém Lanches como categoria da coxinha, que aparece acima da lista de Marmitas prontas por ser destaque. |
+| Café | Café puro, café com leite e cappuccino em copo ficam arquivados no catálogo inicial. O café gelado foi mantido, pois a imagem da arte mostra o produto em garrafa. |
+
+A arte antiga mostra R$ 24,00 e R$ 26,00 nas marmitas de 500 g. A demonstração usa R$ 22,00 para ambas, conforme a resposta mais recente da Laís. Confirmar com ela esses preços, os recortes das marmitas e a categoria definitiva da coxinha, pois a resposta 1 também menciona Marmitas prontas. Os exemplos de combo aguardam a definição dos sabores e preços antes de cadastro.
+
+### Implementação e aceite
+
+O catálogo de demonstração abre na categoria de ID `marmitas`, rotulada Marmitas prontas no catálogo inicial. Se esse ID estiver ausente ou sem itens visíveis, abre em Todas as categorias. A ordem e os nomes dos grupos salvos continuam vindo do catálogo publicado. A consulta global usa nome, descrição, ingredientes e variantes sem diferenciar acentos. O filtro da busca é independente da categoria em navegação. Ao limpar, a interface retoma o grupo anterior. O foco volta ao campo ao acionar a limpeza. Produtos esgotados continuam listados com rótulo e inclusão desabilitada. Arquivados ficam fora da navegação e da busca.
+
+Os IDs de produto, categoria e variantes existentes foram preservados. As variantes novas de 350 g usam `v3` em cada marmita. A composição por porção usa o nome da variante existente, que chega à ficha e à sacola. Publicação e rascunho salvos seguem com seus dados originais. Nenhuma migração foi necessária.
+
+**Aceite local no Chrome 158 a 390 × 844 px**, pela prévia do build, com perfil descartável e dados fictícios.
+
+| Cenário | Resultado e evidência |
+| --- | --- |
+| Demonstração nova | Abriu em Marmitas prontas. A ficha exibiu composição e preços das quatro porções de frango. A de 300 g entrou na sacola por R$ 16,00. [Antes](../../artifacts/etapa-02-catalogo-mobile/antes-390.png) · [Lista](../../artifacts/etapa-02-catalogo-mobile/marmitas-390.png) · [Ficha](../../artifacts/etapa-02-catalogo-mobile/ficha-marmita-390.png) · [Sacola](../../artifacts/etapa-02-catalogo-mobile/sacola-marmita-390.png) |
+| Busca e filtro | Partindo de Lanches, `frango` encontrou itens em Marmitas prontas e Lanches, com categoria em cada cartão. O filtro restringiu os resultados. Doces sem resultados ofereceu busca em todas as categorias ou limpeza. Limpar retornou a Lanches. `sanduiche` encontrou Sanduíche natural e `cafe` encontrou o café gelado de garrafa. [Busca](../../artifacts/etapa-02-catalogo-mobile/busca-frango-390.png) · [Categoria sem resultados](../../artifacts/etapa-02-catalogo-mobile/filtro-sem-resultados-390.png) |
+| Catálogo salvo | O catálogo anterior fictício manteve o nome Refeições, um produto renomeado, marmita arquivada fora da lista e escondidinho esgotado sem ação de inclusão. O publicado e o rascunho permaneceram idênticos no armazenamento. [Catálogo anterior](../../artifacts/etapa-02-catalogo-mobile/catalogo-anterior-esgotado-390.png) |
+
+A revisão com `web-design-guidelines` conferiu seleção programática dos filtros, texto de esgotamento, anúncio de resultados, foco ao limpar e área de toque de 44 px na ação dos cartões. `npm.cmd test` passou com 31 testes e `npm.cmd run build` passou.
+
+## Etapa 03 do roteiro móvel · Cartões, fotografias e ficha
+
+Os cartões da rota pública e da prévia passaram a usar miniatura proporcional em área reservada de 76 px, nome, porção, preço e uma ação. A ficha exibe composição, porção e preço junto ao título. A área das opções rola independentemente do rodapé com a ação de adicionar. Ao voltar de uma ficha aberta pelo cardápio, o grupo e a busca permanecem e o foco retorna ao botão que abriu a ficha, com a rolagem preservada.
+
+O preço inicial vem da variante mais barata e das escolhas obrigatórias disponíveis, cotadas pela mesma regra da sacola. Cartões esgotados mostram o estado e permitem consultar a ficha com a inclusão desabilitada.
+
+O recorte `sucos` mede 149 × 149 px em todas as versões existentes, inclusive nas que levam 640 e 1280 no nome. Coxinha mede 185 × 185 px e a marmita de frango mede 185 × 188 px. Os recortes são servidos como miniaturas com o arquivo WebP menor e alternativa JPEG. Para uploads, os cartões usam o derivado menor e a ficha usa até o derivado intermediário, conforme economia de dados. Oferecer ampliação depende dos pixels reais carregados no navegador e exige pelo menos 320 px em ambos os lados. A ficha mantém a hierarquia quando falta foto. Os caminhos existentes das imagens e a rotina de upload permanecem compatíveis. O editor pede os originais para fotografias maiores.
+
+`Variant.nutrition.confirmed` é opcional e fica no próprio JSON do catálogo. Valores já cadastrados continuam salvos e aguardam confirmação da porção e da composição no painel antes de voltar à ficha. É preciso informar a porção e pelo menos um valor. Alterar nome, composição, opção ou dados nutricionais requer nova confirmação. A tabela é exibida para o produto avulso sem adicionais selecionados. A função Supabase legada deve usar a validação de catálogo desta revisão quando for implantada para publicar a confirmação no backend.
+
+### Aceite da etapa
+
+**Aprovado localmente** no Chrome 158 a 390 × 844 px, em perfil descartável e pela prévia de produção do Vite.
+
+| Cenário | Resultado e evidências |
+| --- | --- |
+| Mesmo suco de 149 px | A ficha antiga exibia o recorte em uma área de 390 × 235 px. A nova ficha exibe em 88 × 88 px e retira o controle de ampliação. [Cartão antes](../../artifacts/etapa-03-cartoes-mobile/antes-cartao-suco-390.png) · [Cartão depois](../../artifacts/etapa-03-cartoes-mobile/depois-cartao-suco-390.png) · [Ficha antes](../../artifacts/etapa-03-cartoes-mobile/antes-ficha-suco-390.png) · [Ficha depois](../../artifacts/etapa-03-cartoes-mobile/depois-ficha-suco-390.png) |
+| Variante e retorno | Uva de 300 ml marcou R$ 8,00. Tangerina de 300 ml atualizou o resumo e o botão para R$ 9,00, valor conferido na sacola. A última opção alcançou a área visível acima do rodapé. Voltar preservou Bebidas, a posição de rolagem e o foco em Escolher. [Ficha com tangerina](../../artifacts/etapa-03-cartoes-mobile/tangerina-390.png) · [Sacola](../../artifacts/etapa-03-cartoes-mobile/sacola-tangerina-390.png) |
+| Foto ausente e foto maior | O produto sem foto preservou porção, preço e ação no cartão e na ficha. A imagem fictícia de 640 × 480 px permitiu ampliar e reduzir. No mesmo ensaio, a tabela apareceu para a variante fictícia confirmada e sumiu na variante sem confirmação. [Cartão sem foto](../../artifacts/etapa-03-cartoes-mobile/sem-foto-cartao-390.png) · [Ficha sem foto](../../artifacts/etapa-03-cartoes-mobile/sem-foto-390.png) · [Ampliação](../../artifacts/etapa-03-cartoes-mobile/foto-maior-ampliada-390.png) |
+
+A revisão com `web-design-guidelines` conferiu nome acessível da ação, dimensões e proporção das imagens, foco de retorno e acesso à última opção. `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. Para a próxima revisão com a Laís, solicitar as fotografias originais e confirmar as tabelas nutricionais que ela deseja publicar.
+
+## Etapa 04 do roteiro móvel · Sacola, revisão e WhatsApp
+
+A sacola identifica o número de porções e o conteúdo de cada porção. O resumo usa a mesma distinção. A barra persistente usa a cor principal do tema e reserva espaço na página, com margem para a área segura. No celular, sai do caminho quando um campo recebe foco. O painel da sacola se adapta à altura visível disponível. Entrega, retirada, observação e escopo da confirmação com a Laís aparecem antes de preparar a solicitação. A falta de contato é informada ao abrir a sacola.
+
+A revisão carrega o catálogo uma vez e compara a cotação por linha. Alterações de preço mostram os valores anterior e atual. Produtos e escolhas indisponíveis são sinalizados na própria linha, com edição e remoção disponíveis. As demais linhas continuam cotadas, e o total fica em revisão enquanto houver itens inválidos. A sacola e a chave de idempotência mantêm o formato de persistência anterior.
+
+A preparação usa a assinatura e o contato da revisão, com envio direto ao adaptador. A função legada e a demonstração fazem a validação definitiva. Um conflito reportado na preparação dispara uma releitura para recuperar os itens afetados. Erros transitórios preservam a chave para uma nova tentativa. Cada revisão assíncrona pertence à versão da seleção que a iniciou. Editar ou fechar invalida respostas anteriores, mesmo que a observação volte ao valor original. Um bloqueio síncrono impede dois envios simultâneos pelo mesmo diálogo.
+
+### Aceite da etapa
+
+**Aprovado localmente** no Chrome 158 a 390 × 844 px, com perfil descartável e dados fictícios. O ensaio da sacola principal usou a prévia do build. O ensaio de falha e latência usou uma API HTTP fictícia servida localmente.
+
+| Cenário | Resultado e evidência |
+| --- | --- |
+| Porções, edição e contato | Adicionou marmita de 300 g e uma porção de duas coxinhas de 240 g, editou a opção para cinco unidades e removeu a coxinha. Selecionou Entrega e inseriu observação fictícia. A abertura já informou a ausência de WhatsApp. [Antes](../../artifacts/etapa-04-sacola-mobile/antes-sacola-390.png) · [Porções](../../artifacts/etapa-04-sacola-mobile/porcoes-390.png) · [Contato ausente](../../artifacts/etapa-04-sacola-mobile/contato-ausente-390.png) |
+| Alterações de catálogo | A marmita passou de R$ 16,00 para R$ 17,00 e a linha mostrou a diferença. O esgotamento após a revisão bloqueou a preparação. A atualização recuperou a oferta quando voltou a ficar disponível. [Preço novo](../../artifacts/etapa-04-sacola-mobile/preco-novo-390.png) · [Esgotamento](../../artifacts/etapa-04-sacola-mobile/esgotado-390.png) |
+| Latência, erro e teclado | Uma edição seguida de retorno à observação original invalidou a resposta atrasada. Uma falha HTTP simulada mostrou o erro e permitiu nova revisão. Com viewport reduzido a 390 × 465 px, a observação ficou na área rolável acima do rodapé. [Resposta atrasada](../../artifacts/etapa-04-sacola-mobile/resposta-atrasada-390.png) · [Falha de rede](../../artifacts/etapa-04-sacola-mobile/falha-de-rede-390.png) · [Viewport reduzido](../../artifacts/etapa-04-sacola-mobile/viewport-reduzido-390.png) |
+| Referência, link e cópia | Dois cliques rápidos geraram uma solicitação. Reabrir e preparar a mesma seleção devolveu a mesma referência. O link curto reproduziu o resumo integral com preferência e observação. Dez montagens fictícias produziram um link apenas para a conversa. O texto passado à operação de cópia, capturada por um substituto descartável da área de transferência, coincidiu integralmente com o resumo. [Resumo](../../artifacts/etapa-04-sacola-mobile/resumo-390.png) · [Resumo longo](../../artifacts/etapa-04-sacola-mobile/resumo-longo-390.png) |
+
+`npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. O teste de contrato conferiu que preparar não repete a leitura de catálogo. A sintaxe TypeScript da função legada foi verificada localmente. Deno, Supabase e Turnstile reais, teclado em aparelhos físicos e envio pelo WhatsApp continuam no aceite de homologação.
+
+## Etapa 05 do roteiro móvel · Painel da proprietária em notebook
+
+A visão geral dá acesso direto à fila de solicitações e ao filtro de esgotados. A lista de pedidos mantém busca por referência ou produto, estado e ação por linha. O cardápio distingue o primeiro destaque e permite priorizar outro destaque elegível. O controle de disponibilidade altera o rascunho. A operação independente de publicação permanece na etapa 07.
+
+Aplicar as mudanças do editor, salvar o rascunho e publicar são ações distintas. O editor indica campos inválidos e avisa antes de descartar alterações. A saída do painel com edição pendente usa o aviso nativo do navegador. A restauração existente recupera o catálogo completo.
+
+A prévia monta o mesmo `Menu` público em um documento próprio, em `/admin/preview`. Ela recebe o rascunho somente da janela pai, por mensagens validadas pela origem e pelo remetente. O modo celular dá ao cardápio um viewport de 390 px nos notebooks ensaiados. A fonte, a escala e as cores do catálogo são aplicadas dentro do quadro. A prévia pode abrir fichas e simular a sacola com estado descartável. Ela não grava pedidos, eventos nem preferências no armazenamento da loja.
+
+As regras legadas de hospedagem permitem o enquadramento de mesma origem somente em `/admin/preview` e mantêm as outras páginas protegidas contra enquadramento. A hospedagem futura deve reproduzir essa exceção e incluir a rota na área administrativa quando usar Access. [Regras de cabeçalhos no Cloudflare Pages](https://developers.cloudflare.com/pages/configuration/headers/#detach-a-header)
+
+### Aceite da etapa
+
+**Aprovado localmente** no Chrome 158 com perfil descartável, dados fictícios e prévia do build de produção.
+
+| Cenário | Resultado e evidências |
+| --- | --- |
+| 1366 × 768 | Localizou o pedido fictício pela referência na fila de conferência e abriu seus dados. Duplicou a coxinha, alterou o preço inicial para R$ 12,50, enviou uma foto fictícia e a priorizou na vitrine. [Antes](../../artifacts/etapa-05-painel-notebook/antes-1366.png) · [Painel](../../artifacts/etapa-05-painel-notebook/painel-1366.png) · [Pedido](../../artifacts/etapa-05-painel-notebook/pedido-1366.png) |
+| 1280 × 720 | Repetiu o fluxo com outro produto fictício e conferiu as ações separadas de prévia, rascunho e publicação. [Antes](../../artifacts/etapa-05-painel-notebook/antes-1280.png) · [Painel](../../artifacts/etapa-05-painel-notebook/painel-1280.png) · [Pedido](../../artifacts/etapa-05-painel-notebook/pedido-1280.png) · [Ações de catálogo](../../artifacts/etapa-05-painel-notebook/acoes-rascunho-1280.png) |
+| Edição sem salvar | Nome vazio exibiu o erro no próprio campo. Fechar ofereceu continuar editando ou descartar. O navegador sinalizou edição pendente. O aviso deixou de bloquear a saída após salvar o rascunho. [Editor](../../artifacts/etapa-05-painel-notebook/editor-aviso-1366.png) |
+| Prévia e publicação | Antes de publicar, a cópia existia apenas no rascunho. Em ambos os tamanhos, a prévia a 390 px e a rota pública em outra aba após publicação local coincidiram em destaque, foto, preço, ordem das categorias, fonte Manrope e cor do rascunho. O painel manteve o tema próprio. [Prévia em 1366](../../artifacts/etapa-05-painel-notebook/previa-1366.png) · [Publicação em 1366](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1366.png) · [Prévia em 1280](../../artifacts/etapa-05-painel-notebook/previa-1280.png) · [Publicação em 1280](../../artifacts/etapa-05-painel-notebook/publicado-outra-aba-1280.png) |
+
+Com cache desativado, a rota pública em outra aba não solicitou os módulos de administração, os estilos administrativos nem os módulos de prévia. A revisão com `web-design-guidelines` cobriu navegação, nomes dos controles, indicação de estado, campos com erro e aviso de saída. `npm.cmd test` passou com 32 testes e `npm.cmd run build` passou. A aplicação efetiva dos cabeçalhos e o acesso administrativo na hospedagem permanecem para homologação.
+
+## Etapa 06 do roteiro móvel · Regras comerciais compartilhadas
+
+### Preço por peso
+
+O preço por quilo em centavos (`Product.pricePerKg`) ativa o modelo de peso. Cada variante mantém seu identificador e informa o peso permitido em gramas inteiros (`Variant.weightGrams`). As opções e preços existentes continuam válidos em catálogos sem o novo campo. O catálogo publicado, o editor, a ficha e a cotação usam o cálculo de `shared/domain`. As APIs de checkout e edição de pedido recebem os mesmos identificadores e recalculam a cotação pelo domínio compartilhado.
+
+No Chrome local, o editor mostrou 100 g por R$ 5 e 200 g por R$ 10 a partir de R$ 50/kg. O teste salvou e publicou o produto fictício no perfil de demonstração, trocou a porção na ficha e conferiu 200 g por R$ 10 na sacola. [Tabela no editor](../../artifacts/etapa-06-regras-comerciais/peso-editor-1366.png) · [Ficha a 390 px](../../artifacts/etapa-06-regras-comerciais/peso-ficha-390.png)
+
+Até a decisão sobre arredondamento, o catálogo e o checkout exigem valores exatos em centavos inteiros. A decisão ficou no [planejamento funcional](planejamento-funcional-lais-fit-ja-v0.1.md#preço-proporcional-por-peso).
+
+### Faixas por quantidade
+
+`Variant.quantityTiers` é opcional e registra o mínimo de unidades e o preço unitário em centavos. A faixa mais alta atingida vale para todas as unidades avulsas do mesmo produto e da mesma variante. O editor exige preços decrescentes e limites crescentes. Se uma unidade adicional reduzir o total, o editor mostra as quantidades e os dois totais à Laís. A regra é aplicada a avulsos de preço fixo sem grupos de adicionais e preserva o preço dos combos. Sabores, tamanhos e porções com identificadores distintos têm contagens próprias.
+
+A ficha considera as demais linhas elegíveis durante a adição ou edição. A sacola e o painel de pedidos usam a cotação compartilhada e mostram o desconto por linha. O cliente continua enviando identificadores, quantidades e escolhas. O servidor legado refaz a cotação do carrinho inteiro e compara a assinatura vigente. Os catálogos salvos mantêm seus dados e podem ativar faixas no painel. O catálogo inicial da demonstração inclui as faixas de brigadeiro e coxinha na opção avulsa. Os pacotes anteriores continuam selecionáveis com os mesmos identificadores e preços.
+
+| Cenário | Resultado |
+| --- | --- |
+| Brigadeiros | 9 custaram R$ 27,00, 10 custaram R$ 25,00 e 11 custaram R$ 27,50. Adicionar 7 e 3 separadamente acionou o desconto nas duas linhas. Reduzir a segunda para 2 retirou a faixa. O editor sinalizou a queda de total de 9 para 10. [Aviso no editor](../../artifacts/etapa-06-regras-comerciais/faixas-aviso-1366.png) · [Sacola](../../artifacts/etapa-06-regras-comerciais/faixas-sacola-390.png) |
+| Coxinhas | 1 por R$ 9,50, 2 por R$ 18,00, 4 por R$ 36,00, 5 por R$ 42,00 e 6 por R$ 50,40. [Ficha](../../artifacts/etapa-06-regras-comerciais/faixas-coxinha-390.png) |
+| Sabores, tamanhos e combos | O teste de domínio verificou que essas quantidades não contam para a faixa do avulso escolhido. Um item inválido deixa o total em revisão e preserva a faixa das linhas válidas. |
+
+O aceite usou dados fictícios no Chrome local a 1366 × 768 px no painel e 390 × 844 px na loja. A validação com Supabase em execução permanece para homologação.
+
+### Combos e montagem personalizada
+
+Os combos fixos e os grupos de escolhas existentes continuam disponíveis. A montagem experimental aguarda um exemplo aprovado pela Laís com tamanhos, escolhas obrigatórias e opcionais, limites e preço. O aceite da pausa seletiva, da edição e duplicação da montagem e dos subtotais pronto e estimado segue pendente.
+
+## Etapa 07 do roteiro móvel · Operação da loja
+
+### Contratos para a conversa 03
+
+`shared/contracts/worker.ts` registra os métodos e caminhos de `/api/v1`, o tipo de cada entrada, o envelope de resposta e se a operação exige identidade da proprietária. Falhas de permissão retornam 403. Versão obsoleta, preço ou contato alterado, item indisponível e divergência de idempotência retornam 409 com códigos distintos. O checkout devolve só a referência, a cotação original, a observação enviada e a data de criação. O adaptador legado continua consumindo a resposta atual do Supabase.
+
+| Operação | Compatibilidade e garantias |
+| --- | --- |
+| Horários | `Catalog.storeHours` é opcional. Um dia omitido indica horário a consultar e uma lista vazia indica fechamento cadastrado. As faixas são locais a Caruaru (`America/Recife`), sem sobreposição e com o fim exclusivo. A data excepcional tem precedência. Catálogos antigos mantêm o texto de referência e as solicitações continuam permitidas fora de horário. |
+| Disponibilidade | `UpdateAvailability` requer a versão publicada observada e muda produto, variante ou pausa de montagens. O estado operacional tem precedência sobre a disponibilidade base do catálogo. Preservar os identificadores da variante e reaplicar a mesma regra ao cotar um combo ou escolha que a referencia. Uma publicação comum mantém as mudanças rápidas. |
+| Aparência | A prévia combina o tema anterior e o cardápio público vigente. A restauração recebe a versão exibida na prévia e a identificação do tema escolhido. Só troca as cores, a tipografia e a escala do tema. Catálogo, horários, disponibilidade, pedidos e rascunho permanecem independentes. |
+| Solicitações | `requested` continua identificando pedido criado no site com mensagem não verificada. `evaluating` é explícito. Pagamento segue como informação da proprietária. Atualizações exigem `expectedUpdatedAt`; para reutilizar a referência do site, abrir seu registro, manter a origem e gravar revisão e histórico juntos. O checkout e a venda direta aceitam chaves de idempotência com escopos e entradas próprios. |
+| Relatórios | A fila e a contagem de confirmados refletem o trabalho em aberto. Semana começa na segunda-feira e, assim como o mês, usa o calendário local. Receita e ticket derivam dos concluídos pela data de conclusão, com ajustes. Componentes do combo contam para produção. Para receita contam os produtos e combos vendidos; o ajuste pertence ao pedido. O CSV da visão geral exporta as vendas filtradas e o da lista exporta os pedidos exibidos. |
+
+A demonstração usa `localStorage` existente e serializa escritas em abas compatíveis por Web Locks. Mantém o catálogo e o histórico antigos legíveis. A gravação de pedido e histórico fica no mesmo registro local. Para o legado remoto, permanecem os campos e estados aceitos pelo esquema do Supabase. A operação rápida, a restauração isolada, o editor estruturado de horários, o estado novo e a gravação de pagamento estão disponíveis na demonstração.
+
+### Servidor e paridade
+
+A conversa 03 deve usar o domínio compartilhado para validar disponibilidade, preços, assinatura da cotação e contato na criação do pedido. Worker verifica a identidade de cada operação administrativa e aplica o limite de requisições no checkout. Em D1, a chave idempotente tem unicidade no escopo da operação, a atualização verifica a versão observada na escrita e a revisão e seu histórico são persistidos juntos. Access cobre painel, prévia e rotas administrativas. O armazenamento deve manter os originais privados no R2 e publicar somente derivados autorizados pelo fluxo de catálogo.
+
+Os cenários de `tests/operations.test.ts` e `tests/local-checkout.test.ts` são a referência para repetir os mesmos casos no Worker, inclusive cotação alterada, indisponibilidade, repetição da mesma chave, divergência de entrada, reutilização da referência de site e escrita concorrente. Comparar códigos de erro, versão, referência, cotação, totais e número de pedidos persistidos. A paridade com o adaptador remoto, o teste de autorização e o armazenamento R2 aguardam a implementação da conversa 03. Homologação, publicação, backup e recuperação seguem nas conversas 03 e 04.
+
+### Aceite da demonstração
+
+**Aprovado localmente** no Chrome 158 com perfil descartável e a prévia do build. Painel a 1366 × 768 px e loja a 390 × 844 px, com dados fictícios. A visita pública com cache desativado não requisitou módulos ou estilos administrativos.
+
+| Cenário | Resultado |
+| --- | --- |
+| Horários | O painel publicou duas faixas para um dia, fechou outro e mostrou um aviso de feriado. A sacola preparou a solicitação com número fictício durante o fechamento. O teste terminou antes de abrir o WhatsApp. Testes de domínio cobriram limites de faixas, dia fechado, feriado e horário vazio. [Painel](../../artifacts/etapa-07-operacoes/horarios-painel-1366.png) · [Aviso na sacola](../../artifacts/etapa-07-operacoes/aviso-sacola-390.png) |
+| Operação rápida e aparência | Esgotou uma opção de tapioca, pausou a montagem fictícia e manteve o combo fixo disponível. Restaurou o tema anterior após vê-lo na prévia. O sabor continuou esgotado na loja e o rascunho salvo manteve a frase reservada. [Disponibilidade](../../artifacts/etapa-07-operacoes/disponibilidade-1366.png) · [Prévia](../../artifacts/etapa-07-operacoes/tema-anterior-1366.png) · [Sabor esgotado](../../artifacts/etapa-07-operacoes/sabor-esgotado-390.png) |
+| Solicitações | Abriu o pedido pelo número do site, removeu um item, marcou “Em avaliação” e registrou Pix. O histórico e a seleção original preservaram os dois itens, e a referência continuou a mesma em um único registro. Uma segunda aba tentou gravar a revisão antiga e recebeu o conflito. [Pedido parcial](../../artifacts/etapa-07-operacoes/pedido-parcial-1366.png) · [Conflito](../../artifacts/etapa-07-operacoes/conflito-pedido-1366.png) |
+| Visão geral e CSV | A amostra incluiu venda de site, venda direta de combo com ajuste, cancelamento e pedido aceito. A semana exibiu R$ 30,00 em vendas concluídas e ticket de R$ 15,00. Os CSVs do painel e da lista incluíram apenas a venda do balcão sob os filtros aplicados. [Visão geral](../../artifacts/etapa-07-operacoes/relatorio-1366.png) |
+
+`npm.cmd test` passou com 52 testes e `npm.cmd run build` passou.

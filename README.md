@@ -27,9 +27,9 @@ npm.cmd run preview
 
 ## Conteúdo inicial
 
-Os produtos e preços visíveis foram transcritos das imagens em `Docs/Fotos do cardapio fisico`. As fotos são **recortes das artes fornecidas**, com resolução original de aproximadamente 150–185 pixels. Gerar arquivos maiores não recupera detalhes: substitua pelos originais usando o painel. O script `npm run assets` reproduz os recortes sem ampliar artificialmente a resolução.
+O catálogo inicial combina os produtos das artes em `Docs/Fotos do cardapio fisico` com os exemplos mais recentes do questionário da Laís. As fotos são **recortes das artes fornecidas**, com resolução original de aproximadamente 150–185 pixels. Gerar arquivos maiores não recupera detalhes: substitua pelos originais usando o painel. O script `npm run assets` reproduz os recortes sem ampliar artificialmente a resolução.
 
-Marmitas avulsas e salada estão arquivadas com preço pendente, pois suas condições não aparecem nas referências. Nenhuma informação nutricional foi inventada. Combos, adicionais e contatos devem ser cadastrados pela loja; não existem promoções fictícias no catálogo público.
+Na demonstração nova, as marmitas prontas de frango e carne têm variantes de 300, 350, 400 e 500 g. A salada avulsa sem preço e os cafés em copo ficam arquivados. Os catálogos já salvos mantêm suas configurações. Confirme com a Laís itens, preços e fotos definitivos antes de publicar. Combos, adicionais, informações nutricionais conferidas e contatos devem ser cadastrados pela loja.
 
 Horário transcrito: segunda a sexta, 08h–13h e 15h30–20h30. Local: Academia Goldbox. Revise produtos, fotos, preços, horários, nomes e alegações sobre alimentos antes de publicar.
 

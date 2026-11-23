@@ -8,6 +8,7 @@ const files = await readdir(folder);
 const crops = [
   ["salada", "777260", 505, 45, 185, 185],
   ["marmita", "777260", 505, 549, 185, 188],
+  ["marmita-frango", "777260", 505, 797, 185, 188],
   ["marmitas", "777260", 505, 1047, 185, 186],
   ["escondidinho", "774886", 505, 47, 185, 187],
   ["lasanha", "774886", 505, 301, 185, 185],

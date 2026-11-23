@@ -1,17 +1,22 @@
 import type {
   Catalog,
   Product,
+  QuantityTier,
   Variant,
 } from "../shared/domain";
-const variants = (values: [string, number][]): Variant[] =>
-  values.map(([name, price], i) => ({ id: `v${i}`, name, price }));
+type SeedVariant = [name: string, price: number, id?: string, quantityTiers?: QuantityTier[]];
+const variants = (values: SeedVariant[]): Variant[] =>
+  values.map(([name, price, id, quantityTiers], i) => ({
+    id: id ?? `v${i}`, name, price,
+    ...(quantityTiers ? { quantityTiers } : {}),
+  }));
 function product(
   id: string,
   name: string,
   categoryId: string,
   description: string,
   image: string,
-  values: [string, number][],
+  values: SeedVariant[],
   featured = false,
   badge = "",
 ): Product {
@@ -34,29 +39,45 @@ function product(
 }
 const products: Product[] = [
   product(
+    "coxinha",
+    "Coxinha fit",
+    "lanches",
+    "Massa de batata inglesa, frango desfiado e queijo muçarela.",
+    "coxinha",
+    [
+      ["1 unidade · 120 g", 950, "v0", [
+        { minQuantity: 2, unitPrice: 900 },
+        { minQuantity: 5, unitPrice: 840 },
+      ]],
+      ["2 unidades · 240 g", 1800],
+      ["5 unidades · 600 g", 4200],
+    ],
+    true,
+  ),
+  product(
     "marmita-frango",
     "Marmita de frango",
     "marmitas",
-    "Sua pausa para comer bem. Frango, feijão e arroz; legumes nas opções a partir de 400 g.",
-    "marmita",
+    "Arroz, feijão e frango em cubos. As porções a partir de 350 g também incluem legumes.",
+    "marmita-frango",
     [
-      ["300 g", 1900],
-      ["400 g", 2400],
-      ["500 g", 2800],
+      ["300 g · Arroz, frango e feijão", 1600, "v0"],
+      ["350 g · Arroz, frango, legumes e feijão", 1800, "v3"],
+      ["400 g · Arroz, frango, legumes e feijão", 2000, "v1"],
+      ["500 g · Arroz, frango, legumes e feijão", 2200, "v2"],
     ],
-    true,
-    "Para o dia a dia",
   ),
   product(
     "marmita-carne",
     "Marmita de carne moída",
     "marmitas",
-    "Arroz, feijão e carne moída. Legumes nas opções a partir de 400 g.",
-    "marmitas",
+    "Arroz, feijão e carne moída. As porções a partir de 350 g também incluem legumes.",
+    "marmita",
     [
-      ["300 g", 2100],
-      ["400 g", 2600],
-      ["500 g", 3000],
+      ["300 g · Arroz, carne moída e feijão", 1800, "v0"],
+      ["350 g · Arroz, carne moída, legumes e feijão", 2000, "v3"],
+      ["400 g · Arroz, carne moída, legumes e feijão", 2200, "v1"],
+      ["500 g · Arroz, carne moída, legumes e feijão", 2200, "v2"],
     ],
   ),
   product(
@@ -171,18 +192,6 @@ const products: Product[] = [
       ["Carne moída · 260 g", 1800],
     ],
     true,
-  ),
-  product(
-    "coxinha",
-    "Coxinha fit",
-    "lanches",
-    "Na medida da sua fome: individual ou para compartilhar.",
-    "coxinha",
-    [
-      ["1 unidade · 120 g", 950],
-      ["2 unidades · 240 g", 1800],
-      ["5 unidades · 600 g", 4200],
-    ],
   ),
   product(
     "empada",
@@ -309,7 +318,7 @@ const products: Product[] = [
     "Um docinho para completar a sua pausa. Confirme os ingredientes com a loja.",
     "brigadeiro",
     [
-      ["1 unidade · 20 g", 300],
+      ["1 unidade · 20 g", 300, "v0", [{ minQuantity: 10, unitPrice: 250 }]],
       ["2 unidades", 600],
       ["10 unidades", 2500],
     ],
@@ -340,7 +349,7 @@ const products: Product[] = [
   ),
   product(
     "bolo-banana",
-    "Bolo de banana",
+    "Bolo fit de banana",
     "doces",
     "Em fatias ou inteiro para compartilhar.",
     "bolo-banana",
@@ -406,24 +415,28 @@ const products: Product[] = [
     ],
   ),
 ];
-// No prices for plain marmitas or standalone salad are visible in the supplied art.
-// Keep these unpublished instead of treating inferred values as an approved menu.
-for (const p of products.filter((p) =>
-  ["marmita-frango", "marmita-carne", "salada"].includes(p.id),
-)) {
-  p.archived = true;
-  p.featured = false;
-  p.variants = p.variants.map((v) => ({ ...v, price: 0 }));
-  p.description =
-    "Aguardando cadastro de composição e preços pela proprietária.";
-}
+// Keep counter drinks and the unpriced standalone salad available in the editor.
+const archivedProducts = new Set(["cafe", "cafe-leite", "cappuccino", "salada"]);
 export const initialCatalog: Catalog = {
   version: "initial",
   name: "Laís Fit Já",
   tagline: "Comida saudável para uma vida leve.",
   whatsapp: "",
   instagram: "",
-  hours: "Segunda a sexta · 08h às 13h e 15h30 às 20h30",
+  hours: "",
+  // Horário informado pela Laís: segunda a sexta, dois turnos. Sábado e domingo fechados.
+  storeHours: {
+    days: {
+      mon: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      tue: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      wed: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      thu: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      fri: [{ opens: "08:00", closes: "13:30" }, { opens: "16:30", closes: "20:30" }],
+      sat: [],
+      sun: [],
+    },
+    closures: [],
+  },
   location: "Na Academia Goldbox",
   banner: "Mais praticidade, mais sabor, mais Fit Já.",
   bannerEnabled: true,
@@ -439,16 +452,18 @@ export const initialCatalog: Catalog = {
   categories: [
     {
       id: "marmitas",
-      name: "Refeições",
+      name: "Marmitas prontas",
       color: "#F1F5EC",
       textColor: "#24382B",
     },
     { id: "lanches", name: "Lanches", color: "#FFF1E9", textColor: "#24382B" },
-    { id: "bebidas", name: "Bebidas", color: "#EEF6F1", textColor: "#24382B" },
     { id: "doces", name: "Doces", color: "#FCF1E9", textColor: "#24382B" },
+    { id: "bebidas", name: "Bebidas", color: "#EEF6F1", textColor: "#24382B" },
     { id: "combos", name: "Combos", color: "#EAF1E6", textColor: "#24382B" },
   ],
-  products,
+  products: products.map((p) =>
+    archivedProducts.has(p.id) ? { ...p, archived: true } : p,
+  ),
 };
 export function newProduct(categoryId: string): Product {
   return {

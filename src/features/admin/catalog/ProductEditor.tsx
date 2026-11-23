@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -8,22 +8,35 @@ import {
   Upload,
 } from "lucide-react";
 import {
+  hasNutritionValues,
+  money,
+  quantityTierDrops,
+  quantityTierError,
+  supportsQuantityTiers,
+  variantBasePrice,
   type Catalog,
   type ChoiceGroup,
   type Component,
   type Nutrition,
   type Option,
   type Product,
+  type QuantityTier,
   type Variant,
 } from "../../../../shared/domain";
 import { Modal, Notice } from "../../../shared/ui";
 import { FoodImage } from "../../catalog/products";
 import { optimizeUpload } from "./images";
+import { useUnsavedChanges } from "../useUnsavedChanges";
 
 const uid = () => crypto.randomUUID();
+const unconfirmNutrition = (variant: Variant): Variant =>
+  variant.nutrition?.confirmed
+    ? { ...variant, nutrition: { ...variant.nutrition, confirmed: false } }
+    : variant;
 const cents = (s: string) => {
-  const n = Number(s.replace(",", "."));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  if (!/^\d+(?:[,.]\d{0,2})?$/.test(s.trim())) return NaN;
+  const n = Math.round(Number(s.replace(",", ".")) * 100);
+  return Number.isSafeInteger(n) ? n : NaN;
 };
 function Price({
   value,
@@ -35,22 +48,105 @@ function Price({
   label?: string;
 }) {
   const [text, setText] = useState((value / 100).toFixed(2).replace(".", ","));
+  const errorId = useId();
+  const invalid = !Number.isSafeInteger(cents(text));
   return (
     <label className="field">
       {label}
       <input
         inputMode="decimal"
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? errorId : undefined}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(cents(e.target.value));
+        }}
         onBlur={() => {
           const n = cents(text);
-          onChange(n);
-          setText((n / 100).toFixed(2).replace(".", ","));
+          if (Number.isSafeInteger(n)) setText((n / 100).toFixed(2).replace(".", ","));
         }}
       />
+      {invalid && <small className="field-error" id={errorId}>Informe um valor válido, por exemplo 12,50.</small>}
     </label>
   );
 }
+
+function QuantityTiers({
+  product,
+  variant,
+  onChange,
+}: {
+  product: Product;
+  variant: Variant;
+  onChange: (tiers: QuantityTier[]) => void;
+}) {
+  const tiers = variant.quantityTiers ?? [];
+  const error = quantityTierError(product, variant);
+  const errorId = useId();
+  const last = tiers.at(-1);
+  const mayAdd = supportsQuantityTiers(product) && tiers.length < 10 && (last?.minQuantity ?? 1) < 99;
+  function update(index: number, patch: Partial<QuantityTier>) {
+    onChange(tiers.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
+  }
+
+  return (
+    <fieldset
+      className="tier-editor"
+      aria-invalid={!!error || undefined}
+      aria-describedby={error ? errorId : undefined}
+      tabIndex={error ? -1 : undefined}
+    >
+      <legend>Faixas de quantidade</legend>
+      {tiers.map((tier, index) => (
+        <div className="tier-fields" key={index}>
+          <label className="field">
+            A partir de (unidades)
+            <input
+              type="number"
+              min={2}
+              max={99}
+              step={1}
+              value={tier.minQuantity || ""}
+              onChange={(event) => update(index, { minQuantity: event.target.valueAsNumber || 0 })}
+            />
+          </label>
+          <Price
+            label="Preço por unidade (R$)"
+            value={tier.unitPrice}
+            onChange={(unitPrice) => update(index, { unitPrice })}
+          />
+        </div>
+      ))}
+      {error && <p className="field-error" id={errorId} role="status">{error}</p>}
+      {!error && quantityTierDrops(variant).map((drop) => (
+        <p className="tier-warning small" key={drop.quantity} role="status">
+          Confira esta faixa. De {drop.previousQuantity} para {drop.quantity} unidades,
+          o total cai de {money(drop.previousTotal)} para {money(drop.total)}.
+        </p>
+      ))}
+      <div className="tier-actions">
+        <button
+          type="button"
+          className="text-button"
+          disabled={!mayAdd}
+          onClick={() => onChange([...tiers, {
+            minQuantity: (last?.minQuantity || 1) + 1,
+            unitPrice: 0,
+          }])}
+        >
+          <Plus size={15} aria-hidden="true" /> Faixa
+        </button>
+        {!!tiers.length && (
+          <button type="button" className="text-button danger" onClick={() => onChange(tiers.slice(0, -1))}>
+            Remover última faixa
+          </button>
+        )}
+      </div>
+    </fieldset>
+  );
+}
+
 export default function ProductEditor({
   product,
   catalog: c,
@@ -65,14 +161,38 @@ export default function ProductEditor({
   const [p, setP] = useState<Product>(structuredClone(product)),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
+    [photoError, setPhotoError] = useState(""),
+    [triedSave, setTriedSave] = useState(false),
+    [confirmDiscard, setConfirmDiscard] = useState(false),
     [nutrition, setNutrition] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const editor = useRef<HTMLDivElement>(null);
+  const continueEditing = useRef<HTMLButtonElement>(null);
+  const nameError = useId();
+  const variantErrors = useId();
+  const dirty = JSON.stringify(p) !== JSON.stringify(product);
+  const byWeight = p.pricePerKg !== undefined;
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    if (confirmDiscard) continueEditing.current?.focus();
+  }, [confirmDiscard]);
   const change = <K extends keyof Product>(key: K, value: Product[K]) =>
-    setP((old) => ({ ...old, [key]: value }));
+    setP((old) => {
+      const next = { ...old, [key]: value };
+      if (key === "name" || key === "description" || key === "ingredients") {
+        next.variants = old.variants.map(unconfirmNutrition);
+      }
+      return next;
+    });
   const updateVariant = (id: string, patch: Partial<Variant>) =>
     setP((old) => ({
       ...old,
-      variants: old.variants.map((v) => (v.id === id ? { ...v, ...patch } : v)),
+      variants: old.variants.map((v) =>
+        v.id !== id ? v : {
+          ...(patch.name !== undefined || "weightGrams" in patch ? unconfirmNutrition(v) : v),
+          ...patch,
+        },
+      ),
     }));
   const updateGroup = (id: string, patch: Partial<ChoiceGroup>) =>
     setP((old) => ({
@@ -82,11 +202,11 @@ export default function ProductEditor({
   async function upload(file?: File) {
     if (!file) return;
     setBusy(true);
-    setError("");
+    setPhotoError("");
     try {
       change("image", await optimizeUpload(file));
     } catch (e) {
-      setError((e as Error).message);
+      setPhotoError((e as Error).message);
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -94,17 +214,20 @@ export default function ProductEditor({
   }
   function save() {
     setError("");
-    if (!p.name.trim()) {
-      setError("Informe o nome do produto.");
-      return;
-    }
+    setTriedSave(true);
     if (
+      !p.name.trim() ||
       !p.variants.length ||
       p.variants.some(
-        (v) => !v.name.trim() || v.price < 0 || !Number.isSafeInteger(v.price),
-      )
+        (v) => !v.name.trim() || (byWeight
+          ? variantBasePrice(p, v) === null
+          : v.price < 0 || !Number.isSafeInteger(v.price)) || !!quantityTierError(p, v),
+      ) ||
+      p.groups.some((group) => group.options.some((option) =>
+        option.price < 0 || !Number.isSafeInteger(option.price),
+      ))
     ) {
-      setError("Preencha opções e preços válidos.");
+      window.requestAnimationFrame(() => editor.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
     onSave(p);
@@ -113,9 +236,13 @@ export default function ProductEditor({
     <Modal
       title={product.name ? `Editar ${product.name}` : "Novo produto ou combo"}
       wide
-      onClose={onClose}
+      onClose={() => {
+        if (busy) return;
+        if (dirty) setConfirmDiscard(true);
+        else onClose();
+      }}
     >
-      <div className="dialog-scroll editor-scroll">
+      <div className="dialog-scroll editor-scroll" ref={editor}>
         <div className="editor-grid">
           <div>
             <div className="upload-preview">
@@ -141,9 +268,11 @@ export default function ProductEditor({
               <Upload size={17} />
               {p.image ? "Trocar foto" : "Adicionar foto real"}
             </button>
+            {photoError && <p className="field-error" role="alert">{photoError}</p>}
             <p className="small muted">
-              JPEG, PNG ou WebP · até 15 MB. A foto será otimizada e os
-              metadados removidos.
+              Envie a foto original em JPEG, PNG ou WebP, até 15 MB. Para mostrar
+              mais detalhes, prefira originais com pelo menos 1.280 px no lado
+              maior. Os recortes do cardápio físico funcionam como miniaturas.
             </p>
             {p.image && (
               <button
@@ -183,10 +312,14 @@ export default function ProductEditor({
               <label className="field">
                 Nome
                 <input
+                  name="product-name"
                   value={p.name}
                   maxLength={120}
+                  aria-invalid={triedSave && !p.name.trim() || undefined}
+                  aria-describedby={triedSave && !p.name.trim() ? nameError : undefined}
                   onChange={(e) => change("name", e.target.value)}
                 />
+                {triedSave && !p.name.trim() && <small id={nameError} className="field-error">Informe o nome do produto.</small>}
               </label>
               <label className="field">
                 Categoria
@@ -239,6 +372,8 @@ export default function ProductEditor({
                     setP({
                       ...p,
                       kind: e.target.value as Product["kind"],
+                      pricePerKg: e.target.value === "product" ? p.pricePerKg : undefined,
+                      variants: p.variants.map(unconfirmNutrition),
                       components:
                         e.target.value === "fixed" ? p.components : [],
                       groups: p.groups,
@@ -251,6 +386,32 @@ export default function ProductEditor({
                 </select>
               </label>
             </div>
+            {p.kind === "product" && (
+              <>
+                <label className="switch-row">
+                  <span>Calcular preço por peso</span>
+                  <input
+                    type="checkbox"
+                    checked={byWeight}
+                    onChange={(e) => setP({
+                      ...p,
+                      pricePerKg: e.target.checked ? 0 : undefined,
+                      variants: p.variants.map((v) => ({
+                        ...unconfirmNutrition(v),
+                        price: Number.isSafeInteger(v.price) ? v.price : 0,
+                      })),
+                    })}
+                  />
+                </label>
+                {byWeight && (
+                  <Price
+                    label="Preço por quilo (R$)"
+                    value={p.pricePerKg ?? 0}
+                    onChange={(price) => change("pricePerKg", price)}
+                  />
+                )}
+              </>
+            )}
             <div className="editor-section-heading">
               <h3>
                 {p.kind === "product"
@@ -277,15 +438,40 @@ export default function ProductEditor({
                   <input
                     value={v.name}
                     maxLength={100}
+                    aria-invalid={triedSave && !v.name.trim() || undefined}
+                    aria-describedby={triedSave && !v.name.trim() ? `${variantErrors}-${i}` : undefined}
                     onChange={(e) =>
                       updateVariant(v.id, { name: e.target.value })
                     }
                   />
+                  {triedSave && !v.name.trim() && <small id={`${variantErrors}-${i}`} className="field-error">Informe o nome da opção.</small>}
                 </label>
-                <Price
-                  value={v.price}
-                  onChange={(price) => updateVariant(v.id, { price })}
-                />
+                {byWeight ? (
+                  <label className="field">
+                    Peso da porção (g)
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={v.weightGrams ?? ""}
+                      aria-invalid={triedSave && variantBasePrice(p, v) === null || undefined}
+                      aria-describedby={triedSave && variantBasePrice(p, v) === null ? `${variantErrors}-weight-${i}` : undefined}
+                      onChange={(e) => updateVariant(v.id, {
+                        weightGrams: e.target.value ? e.target.valueAsNumber : undefined,
+                      })}
+                    />
+                    {triedSave && variantBasePrice(p, v) === null && (
+                      <small id={`${variantErrors}-weight-${i}`} className="field-error">
+                        Use um peso inteiro em gramas e um preço que resulte em centavos inteiros.
+                      </small>
+                    )}
+                  </label>
+                ) : (
+                  <Price
+                    value={v.price}
+                    onChange={(price) => updateVariant(v.id, { price })}
+                  />
+                )}
                 <button
                   className="icon-button danger"
                   aria-label={`Remover opção ${i + 1}`}
@@ -299,6 +485,15 @@ export default function ProductEditor({
                 >
                   <Trash2 size={16} />
                 </button>
+                {(supportsQuantityTiers(p) || !!v.quantityTiers?.length) && (
+                  <QuantityTiers
+                    product={p}
+                    variant={v}
+                    onChange={(quantityTiers) => updateVariant(v.id, {
+                      quantityTiers: quantityTiers.length ? quantityTiers : undefined,
+                    })}
+                  />
+                )}
                 <button
                   className="text-button nutrition-edit-button"
                   onClick={() => setNutrition(nutrition === v.id ? "" : v.id)}
@@ -308,8 +503,8 @@ export default function ProductEditor({
                 {nutrition === v.id && (
                   <div className="nutrition-editor">
                     <p className="small muted">
-                      Valores da opção selecionada, sem adicionais. Campos
-                      vazios serão mostrados como não informados.
+                      Confira a porção e a composição do produto. A tabela
+                      confirmada aparece na ficha de produtos avulsos sem adicionais.
                     </p>
                     {(
                       [
@@ -321,7 +516,7 @@ export default function ProductEditor({
                         ["saturated", "Gorduras saturadas (g)"],
                         ["fiber", "Fibras (g)"],
                         ["sodium", "Sódio (mg)"],
-                      ] as [keyof Nutrition, string][]
+                      ] as [Exclude<keyof Nutrition, "confirmed">, string][]
                     ).map(([key, label]) => (
                       <label className="field" key={key}>
                         {label}
@@ -334,16 +529,52 @@ export default function ProductEditor({
                                 serving: "",
                                 ...v.nutrition,
                                 [key]: e.target.value,
+                                confirmed: false,
                               },
                             })
                           }
                         />
                       </label>
                     ))}
+                    <label className="switch-row">
+                      <span>Porção e composição conferidas</span>
+                      <input
+                        type="checkbox"
+                        checked={v.nutrition?.confirmed === true}
+                        disabled={p.kind !== "product" || !hasNutritionValues(v.nutrition)}
+                        onChange={(e) => {
+                          if (v.nutrition) {
+                            updateVariant(v.id, {
+                              nutrition: { ...v.nutrition, confirmed: e.target.checked },
+                            });
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
               </div>
             ))}
+            {byWeight && (
+              <div className="table-scroll">
+                <table className="data-table portion-prices">
+                  <caption>Preços calculados por porção</caption>
+                  <thead><tr><th scope="col">Opção</th><th scope="col">Peso</th><th scope="col">Preço</th></tr></thead>
+                  <tbody>
+                    {p.variants.map((v) => {
+                      const price = variantBasePrice(p, v);
+                      return (
+                        <tr key={v.id}>
+                          <td>{v.name}</td>
+                          <td>{v.weightGrams ? `${v.weightGrams} g` : "Informe o peso"}</td>
+                          <td>{price === null ? "Revise preço e peso" : money(price)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {p.kind === "fixed" && (
               <section className="editor-section">
                 <div className="editor-section-heading">
@@ -470,12 +701,21 @@ export default function ProductEditor({
         {error && <Notice error>{error}</Notice>}
       </div>
       <div className="modal-footer editor-footer">
-        <span className="small muted">
-          Salvar adiciona ao rascunho. Publique para atualizar o cardápio.
-        </span>
-        <button className="button primary" disabled={busy} onClick={save}>
-          Salvar produto no rascunho
-        </button>
+        {confirmDiscard ? (
+          <>
+            <strong role="alert">Alterações ainda não aplicadas ao rascunho.</strong>
+            <button type="button" className="button secondary" ref={continueEditing} onClick={() => {
+              setConfirmDiscard(false);
+              editor.current?.querySelector<HTMLInputElement>('input[name="product-name"]')?.focus();
+            }}>Continuar editando</button>
+            <button type="button" className="button secondary danger" onClick={onClose}>Descartar alterações</button>
+          </>
+        ) : (
+          <>
+            <span className="small muted">Depois de aplicar, salve o rascunho no painel.</span>
+            <button type="button" className="button primary" disabled={busy} onClick={save}>Aplicar ao rascunho</button>
+          </>
+        )}
       </div>
     </Modal>
   );

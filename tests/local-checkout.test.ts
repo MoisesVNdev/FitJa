@@ -28,4 +28,17 @@ it("adaptador local reusa referência ao retomar e rejeita reaproveitar a chave 
   const changed = [{ ...cart[0], quantity: 2 }];
   await expect(submitOrder(changed, "Preferência: Retirada.", "same-key", quoteCart(catalog, changed).signature, "")).rejects.toThrow();
   expect(await listOrders()).toHaveLength(1);
+  catalog.whatsapp = "5511888888888";
+  values.set("fitja:published", JSON.stringify(catalog));
+  await expect(submitOrder(cart, "Preferência: Retirada.", "new-key", signature, "", "5511999999999"))
+    .rejects.toThrow(/contato do WhatsApp mudou/);
+  catalog.products.find((p) => p.id === "tapioca")!.variants[0].price += 100;
+  values.set("fitja:published", JSON.stringify(catalog));
+  await expect(submitOrder(cart, "Preferência: Retirada.", "new-key", signature, "", catalog.whatsapp))
+    .rejects.toThrow(/cardápio mudou/);
+  catalog.products.find((p) => p.id === "tapioca")!.available = false;
+  values.set("fitja:published", JSON.stringify(catalog));
+  await expect(submitOrder(cart, "Preferência: Retirada.", "new-key", signature, "", catalog.whatsapp))
+    .rejects.toThrow(/indisponível/);
+  expect(await listOrders()).toHaveLength(1);
 });

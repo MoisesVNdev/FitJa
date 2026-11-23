@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { BarChart3, Eye, Leaf, Package, ShoppingBag } from "lucide-react";
 import { money, type Order } from "../../../../shared/domain";
-import { type EventRow } from "../../../shared/api/admin";
+import { caruaruDate, caruaruTimeZone } from "../../../../shared/domain/hours";
+import { filterOrders, salesReport } from "../../../../shared/domain/orders";
+import type { ReportPeriod } from "../../../../shared/contracts/admin";
+import { clearDemoData, csv, demo, download, hasDemoData, seedDemoData, type EventRow } from "../../../shared/api/admin";
 
 import { sourceLabels, date, Empty, Status } from "../ui";
 export default function Dashboard({
@@ -15,83 +18,45 @@ export default function Dashboard({
   onOrders: () => void;
   refresh: () => Promise<void>;
 }) {
-  const [days, setDays] = useState(7);
-  const now = Date.now(),
-    since = now - days * 86400000,
-    prev = since - days * 86400000;
-  const completed = orders.filter(
-      (o) =>
-        o.status === "completed" &&
-        new Date(o.completed_at || o.updated_at).getTime() >= since,
-    ),
-    requested = orders.filter(
-      (o) => o.source === "site" && new Date(o.created_at).getTime() >= since,
-    ),
-    prior = orders.filter(
-      (o) =>
-        o.status === "completed" &&
-        new Date(o.completed_at || o.updated_at).getTime() >= prev &&
-        new Date(o.completed_at || o.updated_at).getTime() < since,
-    );
-  const revenue = completed.reduce(
-      (n, o) => n + o.current.total + o.adjustment,
-      0,
-    ),
-    oldRevenue = prior.reduce((n, o) => n + o.current.total + o.adjustment, 0),
-    ev = events.filter((e) => new Date(e.created_at).getTime() >= since),
+  const [period, setPeriod] = useState<ReportPeriod>("week");
+  const [origin, setOrigin] = useState<Order["source"] | "all">("all");
+  const now = new Date();
+  const scoped = origin === "all" ? orders : orders.filter((order) => order.source === origin);
+  const report = salesReport(scoped, period, now);
+  const completed = filterOrders(scoped, { status: "completed", source: "all", search: "", period }, now);
+  const windowDays = period === "week" ? 7 : period === "month" ? 30 : 90;
+  const ev = events.filter((e) => +new Date(e.created_at) >= +now - windowDays * 86400000),
     visits = new Set(
       ev.filter((e) => e.name === "visit").map((e) => e.session_id),
     ).size;
-  const sales = new Map<string, { name: string; n: number; value: number }>(),
-    components = new Map<string, { name: string; n: number }>();
-  completed.forEach((o) =>
-    o.current.lines.forEach((l) => {
-      const current = sales.get(l.productId) || {
-        name: l.name,
-        n: 0,
-        value: 0,
-      };
-      current.n += l.quantity;
-      current.value += l.total;
-      sales.set(l.productId, current);
-      l.components.forEach((c) => {
-        const item = components.get(`${c.productId}:${c.variantId}`) || {
-          name: c.name,
-          n: 0,
+  const ranking = report.products;
+  const max = Math.max(1, ...ranking.map((item) => item.quantity));
+  const recent = filterOrders(scoped, { status: "completed", source: "all", search: "" }, now);
+  const orderDay = (o: Order) => caruaruDate(new Date(o.completed_at || o.updated_at)).date;
+  const total = (o: Order) => o.current.total + o.adjustment;
+  // Semana e mês: últimos 7 dias, um por barra. Três meses: 13 semanas, uma por barra.
+  const bars = period === "quarter"
+    ? Array.from({ length: 13 }, (_, i) => {
+        const end = new Date(+now - (12 - i) * 7 * 86400000),
+          last = caruaruDate(end).date,
+          first = caruaruDate(new Date(+end - 6 * 86400000)).date;
+        return {
+          label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", timeZone: caruaruTimeZone }).format(end),
+          value: recent.filter((o) => orderDay(o) >= first && orderDay(o) <= last).reduce((n, o) => n + total(o), 0),
         };
-        item.n += c.quantity * l.quantity;
-        components.set(`${c.productId}:${c.variantId}`, item);
-      });
-    }),
-  );
-  const ranking = [...sales.values()].sort((a, b) => b.n - a.n),
-    max = Math.max(1, ...ranking.map((x) => x.n));
-  const bars = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now - (6 - i) * 86400000),
-      day = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Sao_Paulo",
-      }).format(d),
-      value = completed
-        .filter(
-          (o) =>
-            new Intl.DateTimeFormat("en-CA", {
-              timeZone: "America/Sao_Paulo",
-            }).format(new Date(o.completed_at || o.updated_at)) === day,
-        )
-        .reduce((n, o) => n + o.current.total + o.adjustment, 0);
-    return {
-      label: new Intl.DateTimeFormat("pt-BR", {
-        weekday: "short",
-        timeZone: "America/Sao_Paulo",
       })
-        .format(d)
-        .replace(".", ""),
-      value,
-    };
-  });
+    : Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(+now - (6 - i) * 86400000),
+          day = caruaruDate(d).date;
+        return {
+          label: new Intl.DateTimeFormat("pt-BR", { weekday: "short", timeZone: caruaruTimeZone }).format(d).replace(".", ""),
+          value: recent.filter((o) => orderDay(o) === day).reduce((n, o) => n + total(o), 0),
+        };
+      });
   const barMax = Math.max(1, ...bars.map((x) => x.value));
   return (
     <>
+      {demo && <DemoDataCard refresh={refresh} />}
       <div className="dashboard-toolbar">
         <span>
           <span className="status-dot" />
@@ -100,13 +65,20 @@ export default function Dashboard({
         <div>
           <select
             aria-label="Período do dashboard"
-            value={days}
-            onChange={(e) => setDays(+e.target.value)}
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as ReportPeriod)}
           >
-            <option value={7}>Últimos 7 dias</option>
-            <option value={30}>Últimos 30 dias</option>
-            <option value={90}>Últimos 90 dias</option>
+            <option value="week">Esta semana</option>
+            <option value="month">Este mês</option>
+            <option value="quarter">Últimos 3 meses</option>
           </select>
+          <select aria-label="Origem das vendas" value={origin} onChange={(event) => setOrigin(event.target.value as typeof origin)}>
+            <option value="all">Todas as origens</option>
+            {Object.entries(sourceLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <button className="button secondary compact" onClick={() => download("fitja-vendas.csv", csv(completed))}>
+            Exportar vendas CSV
+          </button>
           <button
             className="button secondary compact"
             onClick={() => void refresh()}
@@ -118,41 +90,48 @@ export default function Dashboard({
       <div className="stat-grid">
         <Stat
           label="Vendas registradas"
-          value={money(revenue)}
-          hint={
-            oldRevenue
-              ? `${((revenue / oldRevenue - 1) * 100).toFixed(0)}% em relação ao período anterior`
-              : "Pedidos marcados como concluídos"
-          }
+          value={money(report.revenue)}
+          hint="Concluídos no período, com ajustes"
           icon={<BarChart3 />}
         />
         <Stat
           label="Pedidos concluídos"
-          value={String(completed.length)}
-          hint={`${requested.length} solicitações iniciadas no site`}
+          value={String(report.completed)}
+          hint="Pela data de conclusão em Caruaru"
           icon={<ShoppingBag />}
         />
         <Stat
           label="Ticket médio"
-          value={money(
-            completed.length ? Math.round(revenue / completed.length) : 0,
-          )}
-          hint="Com ajustes registrados no painel"
+          value={money(report.average)}
+          hint="Calculado sobre pedidos concluídos"
           icon={<Package />}
         />
         <Stat
           label="Acessos aproximados"
           value={String(visits)}
-          hint={`${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
+          hint={`Últimos ${windowDays} dias · ${ev.filter((e) => e.name === "whatsapp_click").length} cliques no WhatsApp`}
           icon={<Eye />}
         />
       </div>
+      <section className="admin-card">
+        <h2>Vendas por origem</h2>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead><tr><th scope="col">Origem</th><th scope="col">Pedidos concluídos</th><th scope="col">Vendas</th></tr></thead>
+            <tbody>
+              {(Object.keys(sourceLabels) as Order["source"][]).filter((source) => origin === "all" || source === origin).map((source) => (
+                <tr key={source}><th scope="row">{sourceLabels[source]}</th><td>{report.byOrigin[source].count}</td><td>{money(report.byOrigin[source].total)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <div className="dashboard-columns">
         <section className="admin-card">
           <div className="card-heading">
             <div>
-              <h2>Uma semana de sabores</h2>
-              <p>Valores concluídos · últimos 7 dias</p>
+              <h2>{period === "quarter" ? "Três meses de sabores" : "Uma semana de sabores"}</h2>
+              <p>{period === "quarter" ? "Valores concluídos · por semana, últimas 13 semanas" : "Valores concluídos · últimos 7 dias"}</p>
             </div>
             <span className="chart-legend">Vendas registradas</span>
           </div>
@@ -190,15 +169,16 @@ export default function Dashboard({
           </div>
           {ranking.length ? (
             ranking.slice(0, 5).map((p, i) => (
-              <div className="ranking" key={p.name}>
+              <div className="ranking" key={p.id}>
                 <span>{String(i + 1).padStart(2, "0")}</span>
                 <div>
                   <strong>{p.name}</strong>
+                  <small className="muted">{money(p.total)} em produtos</small>
                   <div className="rank-track">
-                    <div style={{ width: `${(p.n / max) * 100}%` }} />
+                    <div style={{ width: `${(p.quantity / max) * 100}%` }} />
                   </div>
                 </div>
-                <b>{p.n}</b>
+                <b>{p.quantity}</b>
               </div>
             ))
           ) : (
@@ -209,7 +189,7 @@ export default function Dashboard({
           )}
         </section>
       </div>
-      {components.size > 0 && (
+      {report.components.length > 0 && (
         <section className="admin-card">
           <h2>Componentes dos combos</h2>
           <p className="muted">
@@ -217,10 +197,10 @@ export default function Dashboard({
             novamente.
           </p>
           <div className="component-chips">
-            {[...components.values()].map((x) => (
-              <span key={x.name}>
+            {report.components.map((x) => (
+              <span key={x.id}>
                 {x.name}
-                <b>{x.n} un.</b>
+                <b>{x.quantity} un.</b>
               </span>
             ))}
           </div>
@@ -257,7 +237,7 @@ export default function Dashboard({
                     <td>{date(o.created_at)}</td>
                     <td>{sourceLabels[o.source]}</td>
                     <td>
-                      <Status status={o.status} />
+                      <Status status={o.status} source={o.source} />
                     </td>
                     <td>{money(o.current.total + o.adjustment)}</td>
                   </tr>
@@ -278,6 +258,54 @@ export default function Dashboard({
         afetados por bloqueadores. Eventos disponíveis por até 90 dias.
       </p>
     </>
+  );
+}
+function DemoDataCard({ refresh }: { refresh: () => Promise<void> }) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const present = hasDemoData();
+  function run(action: () => string) {
+    setError("");
+    try {
+      setMessage(action());
+    } catch (problem) {
+      setMessage("");
+      setError((problem as Error).message);
+    }
+  }
+  return (
+    <section className="admin-card demo-data-card" aria-label="Dados fictícios de demonstração">
+      <div>
+        <h2>Dados de demonstração</h2>
+        <p className="muted">
+          {present
+            ? "Há 3 meses de pedidos e acessos fictícios neste navegador. Eles não são vendas reais."
+            : "Preencha o painel com 3 meses de pedidos e acessos fictícios para ver como os números aparecem. Também define o horário comercial: segunda a sexta, 8h–13h30 e 16h30–20h30."}
+        </p>
+      </div>
+      <div className="appearance-actions">
+        <button className="button primary compact" type="button" onClick={() => {
+          if (present && !window.confirm("Gerar novamente? Os dados fictícios atuais serão substituídos (pedidos reais não são apagados).")) return;
+          run(() => {
+            const result = seedDemoData();
+            void refresh();
+            return `Pronto: ${result.orders} pedidos e ${result.events} eventos fictícios. Recarregue a página para atualizar também os horários.`;
+          });
+        }}>{present ? "Gerar de novo" : "Gerar 3 meses de dados"}</button>
+        {present && (
+          <button className="button secondary compact" type="button" onClick={() => {
+            if (!window.confirm("Apagar somente os dados fictícios? Pedidos reais ficam.")) return;
+            run(() => {
+              const result = clearDemoData();
+              void refresh();
+              return `Removidos ${result.orders} pedidos e ${result.events} eventos fictícios.`;
+            });
+          }}>Apagar dados fictícios</button>
+        )}
+      </div>
+      {message && <p role="status" className="small">{message}</p>}
+      {error && <p role="alert" className="small danger">{error}</p>}
+    </section>
   );
 }
 function HeartIcon() {

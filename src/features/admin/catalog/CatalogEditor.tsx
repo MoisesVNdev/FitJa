@@ -1,23 +1,34 @@
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2, Undo2 } from "lucide-react";
-import { available, money, normalize, type Catalog, type Product } from "../../../../shared/domain";
+import { ArrowDown, ArrowUp, Copy, Plus, Star, Trash2, Undo2 } from "lucide-react";
+import { available, money, normalize, variantBasePrice, type Catalog, type Product } from "../../../../shared/domain";
 import { newProduct } from "../../../data";
 import ProductEditor from "./ProductEditor";
 
 import { Empty } from "../ui";
+
+function catalogPrice(product: Product) {
+  const prices = product.variants.flatMap((variant) => variantBasePrice(product, variant) ?? []);
+  return prices.length ? money(Math.min(...prices)) : "Sem preço";
+}
+
 export default function CatalogEditor({
   catalog: c,
   change,
+  outOfStockOnly = false,
 }: {
   catalog: Catalog;
   change: (c: Catalog) => void;
+  outOfStockOnly?: boolean;
 }) {
   const [search, setSearch] = useState(""),
     [editing, setEditing] = useState<Product | null>(null),
-    [category, setCategory] = useState("all");
+    [category, setCategory] = useState("all"),
+    [stock, setStock] = useState(outOfStockOnly ? "sold-out" : "all");
+  const firstFeatured = c.products.find((p) => p.featured && available(c, p));
   const items = c.products.filter(
     (p) =>
       (category === "all" || p.categoryId === category) &&
+      (stock === "all" || (stock === "archived" ? p.archived : !p.archived && !available(c, p))) &&
       normalize(p.name).includes(normalize(search)),
   );
   function moveProduct(id: string, delta: number) {
@@ -37,11 +48,20 @@ export default function CatalogEditor({
     });
     setEditing(null);
   }
+  function prioritize(p: Product) {
+    if (!firstFeatured || firstFeatured.id === p.id) return;
+    const products = c.products.filter((product) => product.id !== p.id);
+    products.splice(products.indexOf(firstFeatured), 0, p);
+    change({ ...c, products });
+  }
   return (
     <>
       <div className="section-toolbar">
         <div className="toolbar-inputs">
           <input
+            name="catalog-search"
+            type="search"
+            autoComplete="off"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar no seu cardápio"
@@ -58,6 +78,11 @@ export default function CatalogEditor({
                 {cat.name}
               </option>
             ))}
+          </select>
+          <select aria-label="Filtrar disponibilidade" value={stock} onChange={(e) => setStock(e.target.value)}>
+            <option value="all">Todos os itens</option>
+            <option value="sold-out">Itens esgotados</option>
+            <option value="archived">Itens arquivados</option>
           </select>
         </div>
         <button
@@ -104,23 +129,26 @@ export default function CatalogEditor({
                               ? "Combo fixo"
                               : "Combo montável"}
                       </small>
+                      {p.id === firstFeatured?.id && <small className="featured-label">Primeiro destaque</small>}
+                      {p.featured && p.id !== firstFeatured?.id && <small>Na vitrine</small>}
                     </div>
                   </div>
                 </td>
                 <td>
                   {c.categories.find((cat) => cat.id === p.categoryId)?.name}
                 </td>
-                <td>{money(Math.min(...p.variants.map((v) => v.price)))}</td>
+                <td>{catalogPrice(p)}</td>
                 <td>
                   <button
-                    className={`availability ${p.available && !p.archived ? "yes" : ""}`}
+                    className={`availability ${available(c, p) ? "yes" : ""}`}
+                    aria-label={p.archived ? `${p.name} arquivado` : `Marcar ${p.name} como ${p.available ? "esgotado" : "disponível"} no rascunho`}
                     onClick={() => save({ ...p, available: !p.available })}
                     disabled={p.archived}
                   >
                     {p.archived
                       ? "Arquivado"
                       : p.available
-                        ? "Disponível"
+                        ? available(c, p) ? "Disponível" : "Opções indisponíveis"
                         : "Esgotado"}
                   </button>
                 </td>
@@ -161,6 +189,11 @@ export default function CatalogEditor({
                     >
                       <Copy size={16} />
                     </button>
+                    {p.featured && available(c, p) && firstFeatured?.id !== p.id && (
+                      <button className="icon-button" aria-label={`Priorizar ${p.name} na vitrine`} onClick={() => prioritize(p)}>
+                        <Star size={16} aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       className="icon-button"
                       aria-label={
@@ -193,16 +226,6 @@ export default function CatalogEditor({
           onSave={save}
         />
       )}
-      <div className="info-box">
-        <strong>Sobre o conteúdo inicial</strong>
-        <p>
-          Produtos e preços foram transcritos das artes em Docs. Fotos são
-          recortes pequenos dessas referências; substitua pelas fotos originais
-          para melhor definição. Marmitas avulsas e salada aguardam preços e
-          estão arquivadas. Combos e adicionais devem ser cadastrados com as
-          regras reais da loja.
-        </p>
-      </div>
     </>
   );
 }

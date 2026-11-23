@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, Clock3, Coffee, Cookie, Heart, Instagram, Leaf, MapPin, Menu as MenuIcon, MessageCircle, Search, ShieldCheck, ShoppingBag, SlidersHorizontal, Sparkles, Utensils, X } from "lucide-react";
-import { available, money, normalize, quoteCart, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { Check, Info, Instagram, Leaf, MessageCircle, Search, ShieldCheck, X } from "lucide-react";
+import { highlightVisible, money, normalize, quoteCart, startingOffer, validPhone, type CartLine, type Catalog, type Product } from "../../../shared/domain";
+import { caruaruDate } from "../../../shared/domain/hours";
 import { demo, loadCatalog, storage, backendConfigured, track } from "../../shared/api/catalog";
-import { Modal } from "../../shared/ui";
+import { BagIcon, Modal } from "../../shared/ui";
 import { ProductCard, ProductDialog } from "./ProductViews";
+import { HighlightCarousel } from "./HighlightCarousel";
+import { StoreHours, useHoursStatus } from "./StoreHours";
 
 import { useTheme } from "../../shared/styles/useTheme";
 import { CartDialog, useCart } from "../cart";
@@ -20,11 +23,14 @@ export function Menu({
     ),
     [error, setError] = useState("");
   const [query, setQuery] = useState(""),
-    [active, setActive] = useState("all"),
+    [browseCategory, setBrowseCategory] = useState<string | null>(),
+    [searchCategory, setSearchCategory] = useState<string | null>(null),
     [selected, setSelected] = useState<Product | null>(null),
     [editLine, setEditLine] = useState<CartLine | undefined>();
   const [cartOpen, setCartOpen] = useState(false),
     [toast, setToast] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
+  const productReturn = useRef<{ opener: HTMLButtonElement; scrollY: number } | null>(null);
   const { cart, setCart } = useCart(preview, setToast);
   const [economy, setEconomy] = useState(() => {
       const saved = storage.get<boolean | null>("economy", null);
@@ -43,6 +49,7 @@ export function Menu({
     }),
     [info, setInfo] = useState(false);
   useTheme(catalog);
+  const hours = useHoursStatus(catalog);
   useEffect(() => {
     if (previewCatalog) {
       setCatalog(previewCatalog);
@@ -51,6 +58,13 @@ export function Menu({
     void loadCatalog()
       .then(setCatalog)
       .catch((e) => setError(e.message));
+    function syncCatalog(event: StorageEvent) {
+      if (demo && (event.key === "fitja:published" || event.key === null)) {
+        void loadCatalog().then(setCatalog).catch((e) => setError(e.message));
+      }
+    }
+    window.addEventListener("storage", syncCatalog);
+    return () => window.removeEventListener("storage", syncCatalog);
   }, [previewCatalog]);
   useEffect(() => {
     if (!preview) void track("visit");
@@ -60,7 +74,17 @@ export function Menu({
     const timer = setTimeout(() => setToast(""), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
-  const catsRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (selected || !productReturn.current) return;
+    const { opener, scrollY } = productReturn.current;
+    productReturn.current = null;
+    if (opener.isConnected) {
+      opener.focus({ preventScroll: true });
+      if (!preview && window.scrollY !== scrollY) {
+        window.scrollTo({ top: scrollY, behavior: "instant" });
+      }
+    }
+  }, [selected, preview]);
   if (error)
     return (
       <main className="error-page">
@@ -81,28 +105,49 @@ export function Menu({
     );
   const c = catalog,
     count = cart.reduce((n, l) => n + l.quantity, 0),
-    featured = c.products.filter(
-      (p) => p.featured && !p.archived && available(c, p),
-    );
+    featuredProducts = c.products
+      .filter((p) => p.featured && !p.archived && startingOffer(c, p))
+      .slice(0, 5),
+    today = caruaruDate(new Date()).date,
+    notices = (c.highlights ?? []).filter((item) => highlightVisible(item, today));
   let total: number | null = null;
   try {
     if (cart.length) total = quoteCart(c, cart).total;
   } catch {
     /* Cart review identifies stale products. */
   }
-  const filtered = (categoryId: string) =>
-    c.products.filter(
-      (p) =>
-        !p.archived &&
-        p.categoryId === categoryId &&
-        normalize(
-          `${p.name} ${p.description} ${p.variants.map((v) => v.name).join(" ")}`,
-        ).includes(normalize(query)),
-    );
+  const term = normalize(query.trim());
+  const sections = c.categories
+    .map((category) => ({
+      category,
+      products: c.products.filter((p) => p.categoryId === category.id && !p.archived),
+    }))
+    .filter(({ products }) => products.length > 0);
+  const requestedCategory = term
+    ? searchCategory
+    : browseCategory === undefined ? "marmitas" : browseCategory;
+  const activeCategory = sections.find(({ category }) => category.id === requestedCategory);
+  const active = activeCategory?.category.id ?? null;
+  const visibleSections = sections
+    .filter(({ category }) => active === null || category.id === active)
+    .map(({ category, products }) => ({
+      category,
+      products: term
+        ? products.filter((p) => normalize(
+          [p.name, p.description, p.ingredients, ...p.variants.map((v) => v.name)].join(" "),
+        ).includes(term))
+        : products,
+    }))
+    .filter(({ products }) => products.length > 0);
+  const resultCount = visibleSections.reduce((sum, { products }) => sum + products.length, 0);
   function choose(p: Product, line?: CartLine) {
     setSelected(p);
     setEditLine(line);
     if (!preview) void track("product_view", p.id);
+  }
+  function chooseFromCard(product: Product, opener: HTMLButtonElement) {
+    productReturn.current = { opener, scrollY: window.scrollY };
+    choose(product);
   }
   function add(line: CartLine) {
     setCart((old) =>
@@ -116,30 +161,49 @@ export function Menu({
     );
     if (!preview) void track("add_to_cart", line.productId);
   }
-  function category(id: string) {
-    setActive(id);
-    setTimeout(
-      () =>
-        document
-          .getElementById(id === "all" ? "menu-start" : `section-${id}`)
-          ?.scrollIntoView({
-            behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-              ? "instant"
-              : "smooth",
-            block: "start",
-          }),
-      20,
-    );
+  function chooseCategory(id: string | null) {
+    if (term) setSearchCategory(id);
+    else setBrowseCategory(id);
   }
-  const icons: Record<string, typeof Leaf> = {
-    marmitas: Utensils,
-    lanches: Utensils,
-    bebidas: Coffee,
-    doces: Cookie,
-    combos: Sparkles,
-  };
+  function submitSearch(e: FormEvent) {
+    // Tocar na lupa do teclado fecha o teclado e leva o cliente aos resultados.
+    e.preventDefault();
+    searchInput.current?.blur();
+    document.querySelector(".search-summary, .category-section")?.scrollIntoView({ block: "start" });
+  }
+  function clearSearch() {
+    setQuery("");
+    setSearchCategory(null);
+    searchInput.current?.focus();
+  }
+  const contactLinks = (
+    <>
+      {validPhone(c.whatsapp) && (
+        <a
+          href={`https://wa.me/${c.whatsapp}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => { if (preview) event.preventDefault(); else void track("whatsapp_click"); }}
+        >
+          <MessageCircle size={19} aria-hidden="true" />
+          WhatsApp
+        </a>
+      )}
+      {c.instagram && (
+        <a
+          href={`https://www.instagram.com/${c.instagram}/`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(event) => { if (preview) event.preventDefault(); else void track("instagram_click"); }}
+        >
+          <Instagram size={19} aria-hidden="true" />
+          Instagram
+        </a>
+      )}
+    </>
+  );
   return (
-    <div className={`storefront ${preview ? "preview-store" : ""}`}>
+    <div className={`storefront ${preview ? "preview-store" : ""} ${count ? "has-cart" : ""}`}>
       {!preview && demo && (
         <div className="demo-strip">
           Prévia local · pedidos e alterações ficam somente neste navegador{" "}
@@ -151,289 +215,191 @@ export function Menu({
           Cardápio em preparação. Pedidos online ainda não disponíveis.
         </div>
       )}
+      {!preview && (
+        <a className="skip-link" href="#menu-start">Ir para a busca do cardápio</a>
+      )}
       <header className="site-header">
-        <a
-          className="brand"
-          href={preview ? "#" : "/"}
-          aria-label={`${c.name}, início`}
-        >
-          <img src="/media/logo.webp" width="48" height="48" alt="Fit Já" />
-          <span>
-            <strong>{c.name}</strong>
-            <small>COMIDA SAUDÁVEL</small>
-          </span>
-        </a>
+        <div className="brand">
+          <img src="/media/logo.webp" width="52" height="52" alt="" />
+          <div>
+            <h1 translate="no">{c.name}</h1>
+            {c.tagline && <small className="brand-tagline">{c.tagline}</small>}
+          </div>
+        </div>
         <div className="header-actions">
-          <span className="header-location">
-            <MapPin size={15} />
-            {c.location}
-          </span>
           <button
-            className="icon-button subtle"
+            className="icon-button store-info"
+            type="button"
             onClick={() => setInfo(true)}
-            aria-label="Informações e economia de dados"
+            aria-label="Informações da loja e economia de dados"
           >
-            <SlidersHorizontal size={20} />
+            <Info size={21} aria-hidden="true" />
           </button>
           <button
             className="header-cart"
+            type="button"
             onClick={() => setCartOpen(true)}
-            aria-label={`Abrir sacola com ${count} itens`}
+            aria-label={`Abrir sacola com ${count} ${count === 1 ? "item" : "itens"}`}
           >
-            <ShoppingBag size={21} />
-            <span className="desktop-only">Sua sacola</span>
-            {count > 0 && <b>{count}</b>}
+            <span className="cart-icon">
+              <BagIcon size={24} />
+              {count > 0 && (
+                <span key={count} className="cart-badge">{count}</span>
+              )}
+            </span>
+            <span>Sacola</span>
           </button>
         </div>
       </header>
       <main>
-        <section className="hero">
-          <div className="hero-copy">
-            <span className="hero-label">
-              <Leaf size={15} /> BOA COMIDA. BOA ENERGIA.
-            </span>
-            <h1>
-              Leve na rotina.
-              <br />
-              <span>Cheio de sabor.</span>
-            </h1>
-            <p>{c.tagline} Refeições e lanches para acompanhar o seu ritmo.</p>
-            <button
-              className="button hero-button"
-              onClick={() => category("all")}
-            >
-              Encontre seu favorito <Utensils size={18} />
-            </button>
-            <div className="hero-facts">
-              <span>
-                <Heart size={15} /> Feito com carinho
-              </span>
-              <span>
-                <MessageCircle size={15} /> Peça pelo WhatsApp
-              </span>
-            </div>
-          </div>
-          <div className="hero-visual" aria-hidden="true">
-            <div className="hero-ring" />
-            <img
-              className="hero-main-food"
-              src="/media/escondidinho-640.webp"
-              alt=""
-              width="320"
-              height="320"
-              fetchPriority="high"
-            />
-            <img
-              className="hero-small-food"
-              src="/media/suco-laranja-320.webp"
-              alt=""
-              width="140"
-              height="180"
-            />
-            <div className="hero-sticker">
-              <Leaf size={22} />
-              <span>
-                Seu dia pede
-                <br />
-                <strong>mais Fit Já.</strong>
-              </span>
-            </div>
-            <span className="hero-sparkle">✳</span>
-            <span className="hero-caption">
-              COMIDA DE VERDADE, DO SEU JEITO.
-            </span>
-          </div>
-        </section>
-        <div className="store-meta">
-          <span>
-            <Clock3 size={17} />
-            {c.hours}
-          </span>
-          <span>
-            <MapPin size={17} />
-            {c.location}
-          </span>
-        </div>
         <div className="menu-shell">
-          <div className="menu-heading" id="menu-start">
-            <div>
-              <span className="eyebrow">ESCOLHA BEM. COMA FELIZ.</span>
-              <h2>O que vai bem hoje?</h2>
-            </div>
-            <label className="search-box">
-              <Search size={20} />
-              <input
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setActive("all");
-                }}
-                placeholder="Busque seu próximo favorito"
-                aria-label="Buscar produtos"
-              />
-              {query && (
-                <button onClick={() => setQuery("")} aria-label="Limpar busca">
-                  <X size={17} />
-                </button>
-              )}
-            </label>
-          </div>
+          {"exceptional" in hours && <p className="notice store-closure">
+            <span><strong>{hours.text}</strong><br />Você ainda pode enviar sua lista.</span>
+          </p>}
+          {!term && (featuredProducts.length > 0 || notices.length > 0) && (
+            <HighlightCarousel products={featuredProducts} notices={notices} catalog={c} onSelect={chooseFromCard} />
+          )}
+          <form className="search-box" role="search" onSubmit={submitSearch}>
+            <Search size={20} aria-hidden="true" />
+            <input
+              id="menu-start"
+              ref={searchInput}
+              name="query"
+              type="search"
+              enterKeyHint="search"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => {
+                const value = e.target.value;
+                setQuery(value);
+                if (!value.trim()) setSearchCategory(null);
+              }}
+              placeholder="Buscar produtos…"
+              aria-label="Buscar produtos"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Limpar busca"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            )}
+          </form>
           <nav
             className="category-nav"
-            ref={catsRef}
-            aria-label="Categorias do cardápio"
+            aria-label={term ? "Filtrar resultados por categoria" : "Categorias do cardápio"}
           >
             <button
-              className={active === "all" ? "active" : ""}
-              onClick={() => category("all")}
+              type="button"
+              className={active === null ? "active" : ""}
+              aria-pressed={active === null}
+              onClick={() => chooseCategory(null)}
             >
-              <MenuIcon size={17} />
-              Tudo de bom
+              Todas as categorias
             </button>
-            {c.categories
-              .filter((cat) =>
-                c.products.some((p) => p.categoryId === cat.id && !p.archived),
-              )
-              .map((cat) => {
-                const Icon = icons[cat.id] || Leaf;
-                return (
-                  <button
-                    key={cat.id}
-                    className={active === cat.id ? "active" : ""}
-                    onClick={() => category(cat.id)}
-                  >
-                    <Icon size={18} />
-                    {cat.name}
-                  </button>
-                );
-              })}
+            {sections.map(({ category: cat }) => (
+              <button
+                key={cat.id}
+                type="button"
+                className={active === cat.id ? "active" : ""}
+                aria-pressed={active === cat.id}
+                onClick={() => chooseCategory(cat.id)}
+              >
+                {cat.name}
+              </button>
+            ))}
           </nav>
-          {!query && active === "all" && featured.length > 0 && (
-            <section className="featured-section">
-              <div className="section-title">
+          {term && (
+            <p className="search-summary" role="status">
+              {resultCount === 0
+                ? activeCategory
+                  ? `Nenhum resultado em ${activeCategory.category.name}.`
+                  : "Nenhum produto encontrado."
+                : `${resultCount} ${resultCount === 1 ? "produto encontrado" : "produtos encontrados"}`}
+            </p>
+          )}
+          {visibleSections.length === 0 && (
+            <div className="empty search-empty">
+              <p>{term ? "Tente outro termo ou limpe a busca." : "Ainda não há produtos no cardápio."}</p>
+              {term && (
                 <div>
-                  <span className="eyebrow orange">UMA ESCOLHA SEM ERRO</span>
-                  <h2>
-                    Os favoritos da casa <Heart size={22} />
-                  </h2>
+                  <button type="button" className="button secondary" onClick={clearSearch}>
+                    Limpar busca
+                  </button>
+                  {activeCategory && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={() => {
+                        setSearchCategory(null);
+                        searchInput.current?.focus();
+                      }}
+                    >
+                      Buscar em todas as categorias
+                    </button>
+                  )}
                 </div>
-                <span className="small muted desktop-only">
-                  Uma pausa gostosa começa aqui.
+              )}
+            </div>
+          )}
+          {visibleSections.map(({ category: cat, products }) => (
+            <section
+              className="category-section"
+              key={cat.id}
+              style={
+                {
+                  "--section-bg": cat.color,
+                  "--section-text": cat.textColor,
+                } as CSSProperties
+              }
+            >
+              <div className="section-title">
+                <h2>{cat.name}</h2>
+                <span className="category-count">
+                  {products.length} {products.length === 1 ? "produto" : "produtos"}
                 </span>
               </div>
-              <div className="featured-grid">
-                {featured.slice(0, 4).map((p, i) => (
+              <div className="product-grid">
+                {products.map((p) => (
                   <ProductCard
                     key={p.id}
                     product={p}
                     catalog={c}
-                    onSelect={choose}
+                    categoryName={term ? cat.name : undefined}
+                    onSelect={chooseFromCard}
                     economy={economy}
-                    eager={i < 2}
                   />
                 ))}
               </div>
             </section>
-          )}
-          {query &&
-            !c.products.some(
-              (p) =>
-                !p.archived &&
-                normalize(
-                  `${p.name} ${p.description} ${p.variants.map((v) => v.name).join(" ")}`,
-                ).includes(normalize(query)),
-            ) && (
-              <div className="empty">
-                <Search />
-                <h3>Não encontramos esse sabor.</h3>
-                <p>Tente buscar por um ingrediente ou outro nome.</p>
-                <button
-                  className="button secondary"
-                  onClick={() => setQuery("")}
-                >
-                  Ver todo o cardápio
-                </button>
-              </div>
-            )}
-          {c.categories
-            .filter(
-              (cat) =>
-                (active === "all" || active === cat.id) &&
-                filtered(cat.id).length > 0,
-            )
-            .map((cat) => (
-              <section
-                id={`section-${cat.id}`}
-                className="category-section"
-                key={cat.id}
-                style={
-                  {
-                    "--section-bg": cat.color,
-                    "--section-text": cat.textColor,
-                  } as CSSProperties
-                }
-              >
-                <div className="section-title">
-                  <div>
-                    <span className="eyebrow">UM SABOR PARA CADA MOMENTO</span>
-                    <h2>{cat.name}</h2>
-                  </div>
-                  <span className="category-count">
-                    {filtered(cat.id).length} opções
-                  </span>
-                </div>
-                <div className="product-grid">
-                  {filtered(cat.id).map((p) => (
-                    <ProductCard
-                      key={p.id}
-                      product={p}
-                      catalog={c}
-                      onSelect={choose}
-                      economy={economy}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+          ))}
           {c.bannerEnabled && (
             <section className="brand-banner">
-              <Leaf size={35} />
+              <Leaf size={35} aria-hidden="true" />
               <div>
-                <span className="eyebrow">
-                  DA NOSSA COZINHA PARA SUA ROTINA
-                </span>
                 <h2>{c.banner}</h2>
-                <p>Você escolhe. A gente prepara com carinho.</p>
               </div>
-              <span className="banner-doodle" aria-hidden="true">
-                ♡
-              </span>
             </section>
           )}
         </div>
-        <section className="how-it-works">
-          <span className="eyebrow">SIMPLES ASSIM</span>
-          <h2>Do cardápio para a sua rotina.</h2>
-          <div>
-            <article>
-              <span>01</span>
-              <h3>Escolha seus favoritos</h3>
-              <p>Explore os sabores e monte sua sacola.</p>
-            </article>
-            <article>
-              <span>02</span>
-              <h3>Continue no WhatsApp</h3>
-              <p>Seu pedido vai preenchido. É só enviar.</p>
-            </article>
-            <article>
-              <span>03</span>
-              <h3>Combine os detalhes</h3>
-              <p>Pagamento e entrega direto com a equipe.</p>
-            </article>
-          </div>
-        </section>
       </main>
       <footer className="site-footer">
+        <ul className="trust-badges">
+          <li>
+            <Leaf size={22} aria-hidden="true" />
+            <span><strong>Comida saudável</strong><span>Para uma vida leve</span></span>
+          </li>
+          <li>
+            <BagIcon size={22} />
+            <span><strong>Entrega ou retirada</strong><span>Você escolhe na sacola</span></span>
+          </li>
+          <li>
+            <MessageCircle size={22} aria-hidden="true" />
+            <span><strong>Pedido pelo WhatsApp</strong><span>A Laís confirma com você</span></span>
+          </li>
+        </ul>
         <div className="footer-top">
           <div>
             <a className="brand" href="#">
@@ -444,33 +410,10 @@ export function Menu({
           </div>
           <div>
             <strong>Estamos por aqui</strong>
-            <p>{c.hours}</p>
+            <StoreHours catalog={c} status={hours} />
             <p>{c.location}</p>
           </div>
-          <div className="footer-social">
-            {validPhone(c.whatsapp) && (
-              <a
-                href={`https://wa.me/${c.whatsapp}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => void track("whatsapp_click")}
-              >
-                <MessageCircle size={19} />
-                WhatsApp
-              </a>
-            )}
-            {c.instagram && (
-              <a
-                href={`https://www.instagram.com/${c.instagram}/`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => void track("instagram_click")}
-              >
-                <Instagram size={19} />
-                Instagram
-              </a>
-            )}
-          </div>
+          <div className="footer-social">{contactLinks}</div>
         </div>
         <div className="footer-bottom">
           <span>
@@ -491,7 +434,7 @@ export function Menu({
         <div className="floating-cart">
           <button onClick={() => setCartOpen(true)}>
             <span className="floating-count">
-              <ShoppingBag size={19} />
+              <BagIcon size={22} />
               {count}
             </span>
             <strong>Ver minha sacola</strong>
@@ -511,6 +454,7 @@ export function Menu({
           catalog={c}
           economy={economy}
           initial={editLine}
+          cart={cart}
           onClose={() => setSelected(null)}
           onAdd={add}
         />
@@ -519,6 +463,7 @@ export function Menu({
         <CartDialog
           catalog={c}
           cart={cart}
+          hours={hours}
           setCart={setCart}
           onClose={() => setCartOpen(false)}
           onEdit={(line) => {
@@ -530,14 +475,18 @@ export function Menu({
         />
       )}
       {info && (
-        <Modal title="Bom saber" onClose={() => setInfo(false)}>
-          <div className="detail-content">
-            <h3>Uma experiência mais leve</h3>
+        <Modal title="Informações da loja" onClose={() => setInfo(false)}>
+          <div className="detail-content dialog-scroll">
+            <h3>Horário e localização</h3>
+            <StoreHours catalog={c} status={hours} />
+            <p>{c.location}</p>
+            <div className="footer-social">{contactLinks}</div>
+            <h3>Preferências</h3>
             <label className="switch-row">
               <span>
                 <strong>Economia de dados</strong>
                 <small>
-                  Prefere fotos menores. Você ainda pode ampliar ao tocar.
+                  Prefere fotos menores. A ampliação aparece quando a foto tem resolução suficiente.
                 </small>
               </span>
               <input
@@ -545,13 +494,10 @@ export function Menu({
                 checked={economy}
                 onChange={(e) => {
                   setEconomy(e.target.checked);
-                  storage.set("economy", e.target.checked);
+                    if (!preview) storage.set("economy", e.target.checked);
                 }}
               />
             </label>
-            <h3>Horário e localização</h3>
-            <p>{c.hours}</p>
-            <p>{c.location}</p>
             <h3>Seu pedido, seus dados</h3>
             <p>
               A sacola fica salva neste navegador por até sete dias. Ao
@@ -573,7 +519,7 @@ export function Menu({
               className="button secondary"
               onClick={() => {
                 setCart([]);
-                storage.set("cart", null);
+                if (!preview) storage.set("cart", null);
                 setToast("Sacola apagada deste navegador.");
               }}
             >
@@ -585,4 +531,3 @@ export function Menu({
     </div>
   );
 }
-
